@@ -6,6 +6,7 @@ import in.co.akshitbansal.client.MavenCentralClient;
 import in.co.akshitbansal.model.MavenArtifact;
 import in.co.akshitbansal.model.MavenPackage;
 import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Stream;
 
+@Slf4j
 public class Main {
 
     public static void main(String[] args) {
