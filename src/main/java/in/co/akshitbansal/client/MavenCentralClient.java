@@ -9,18 +9,17 @@ import org.w3c.dom.NodeList;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathFactory;
-import java.io.*;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MavenCentralClient {
 
+    private static final HttpClient client = HttpClient.newHttpClient();
     private static final String BASE_URL = "https://repo1.maven.org/maven2";
 
     public static List<MavenArtifact> getArtifacts(@NonNull MavenPackage mavenPackage) {
@@ -46,28 +45,17 @@ public class MavenCentralClient {
         }
     }
 
-    public static void downloadArtifactToFilesystem(@NonNull MavenArtifact mavenArtifact, @NonNull String destinationPath) throws IOException {
-        HttpClient client = null;
-        InputStream inputStream = null;
-        OutputStream outputStream = null;
+    public static InputStream getJavadocInputStream(@NonNull MavenArtifact mavenArtifact) {
         try {
-            client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest
                     .newBuilder()
                     .uri(URI.create(BASE_URL + getJavadocPath(mavenArtifact)))
                     .build();
             HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            inputStream = response.body();
-            outputStream = Files.newOutputStream(Path.of(destinationPath));
-            inputStream.transferTo(outputStream);
+            return response.body();
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to download artifact: " + mavenArtifact, ex);
-        }
-        finally {
-            if(inputStream != null) inputStream.close();
-            if(outputStream != null) outputStream.close();
-            if(client != null) client.close();
         }
     }
 

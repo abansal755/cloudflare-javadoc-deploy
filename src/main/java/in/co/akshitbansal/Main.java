@@ -20,6 +20,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 @Slf4j
 public class Main {
@@ -93,40 +95,32 @@ public class Main {
             Path path = Path.of(sitePath, artifact.getArtifactId(), artifact.getVersion());
             Files.createDirectories(path);
 
-            // Download javadoc jar to the directory
-            Path jarPath = path.resolve("javadoc.jar");
-            MavenCentralClient.downloadArtifactToFilesystem(artifact, jarPath.toString());
-
-            // Unzip the jar contents to the same directory
-            ProcessBuilder builder = new ProcessBuilder(
-                    "unzip",
-                    "-o",
-                    jarPath.toString(),
-                    "-d",
-                    path.toString()
-            );
-            // builder.inheritIO();
-            Process process = builder.start();
-            int exitCode = process.waitFor();
-            if(exitCode != 0) throw new IllegalStateException("Failed to unzip javadoc for artifact: " + artifact);
-
-            // Delete the jar file after extraction
-            Files.delete(jarPath);
+            // Download the javadoc zip from Maven Central and extract it to the artifact directory using streaming
+            try(ZipInputStream zipInputStream = new ZipInputStream(MavenCentralClient.getJavadocInputStream(artifact))) {
+                ZipEntry entry = null;
+                while((entry = zipInputStream.getNextEntry()) != null) {
+                    Path entryPath = path.resolve(entry.getName()).normalize();
+                    if(entry.isDirectory()) Files.createDirectories(entryPath);
+                    else {
+                        Files.createDirectories(entryPath.getParent());
+                        Files.copy(zipInputStream, entryPath);
+                    }
+                    zipInputStream.closeEntry();
+                }
+            }
         }
-        catch (Exception ex) {
-            throw new RuntimeException("Failed to download artifact: " + artifact, ex);
+        catch (IOException ex) {
+            throw new RuntimeException("Failed to prepare javadoc site bundle for artifact: " + artifact, ex);
         }
     }
 
-    private static void generateIndexHtml(String currentPath, String relativePath, int depth, Template template, ExecutorService executor) throws IOException {
+    private static void generateIndexHtml(String currentPath, String relativePath, int depth, Template template, ExecutorService executor) {
         if(depth == 0) return;
 
         // List directories in the current path
         Path path = Path.of(currentPath);
-        Stream<Path> stream = null;
         List<String> dirs;
-        try {
-            stream = Files.list(path);
+        try(Stream<Path> stream = Files.list(path)) {
             dirs = stream
                     .filter(Files::isDirectory)
                     .map(Path::getFileName)
@@ -135,40 +129,35 @@ public class Main {
                     .toList();
         }
         catch (Exception ex) {
-            throw new RuntimeException("Failed to list directories in path: " + currentPath, ex);
-        }
-        finally {
-            if(stream != null) stream.close();
+            throw new RuntimeException("Failed to list directories for path: " + currentPath, ex);
         }
 
         // Generate index.html using the template and save it to the current directory
-        BufferedWriter writer = null;
-        try {
-            writer = Files.newBufferedWriter(path.resolve("index.html"));
+        try (BufferedWriter writer = Files.newBufferedWriter(path.resolve("index.html"))) {
             Map<String, Object> dataModel = new HashMap<>();
             dataModel.put("currentPath", relativePath);
             dataModel.put("directories", dirs);
-            if(!relativePath.equals("/")) dataModel.put("parentPath", "..");
+            if (!relativePath.equals("/")) dataModel.put("parentPath", "..");
             template.process(dataModel, writer);
         }
         catch (Exception ex) {
-            throw new RuntimeException("Failed to generate index.html for path: " + currentPath, ex);
+            throw new RuntimeException("Failed to process template for path: " + currentPath, ex);
         }
-        finally {
-            if(writer != null) writer.close();
-        }
+
 
         // Recursively generate index.html for each subdirectory in parallel
         List<CompletableFuture<Void>> futures = dirs
                 .stream()
-                .map(dir -> CompletableFuture.runAsync(() -> {
-                    try {
-                        generateIndexHtml(path.resolve(dir).toString(), relativePath + dir + "/", depth - 1, template, executor);
-                    }
-                    catch (IOException ex) {
-                        throw new RuntimeException("Failed to generate index.html for directory: " + dir, ex);
-                    }
-                }, executor))
+                .map(dir -> CompletableFuture.runAsync(
+                        () -> generateIndexHtml(
+                                path.resolve(dir).toString(),
+                                relativePath + dir + "/",
+                                depth - 1,
+                                template,
+                                executor
+                        ),
+                        executor
+                ))
                 .toList();
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
