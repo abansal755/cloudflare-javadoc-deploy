@@ -143,7 +143,7 @@ public class Main {
                     catch (IOException ex) {
                         throw new RuntimeException("Failed to generate index.html for directory: " + dir, ex);
                     }
-                }))
+                }, executor))
                 .toList();
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }

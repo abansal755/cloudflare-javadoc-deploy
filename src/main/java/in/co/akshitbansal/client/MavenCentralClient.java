@@ -48,8 +48,8 @@ public class MavenCentralClient {
 
     public static void downloadArtifactToFilesystem(@NonNull MavenArtifact mavenArtifact, @NonNull String destinationPath) throws IOException {
         HttpClient client = null;
-        BufferedInputStream inputStream = null;
-        BufferedOutputStream outputStream = null;
+        InputStream inputStream = null;
+        OutputStream outputStream = null;
         try {
             client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest
@@ -57,21 +57,16 @@ public class MavenCentralClient {
                     .uri(URI.create(BASE_URL + getJavadocPath(mavenArtifact)))
                     .build();
             HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            inputStream = new BufferedInputStream(response.body());
-            outputStream = new BufferedOutputStream(Files.newOutputStream(Path.of(destinationPath)));
-            int b = -1;
-            while((b = inputStream.read()) != -1)
-                outputStream.write(b);
+            inputStream = response.body();
+            outputStream = Files.newOutputStream(Path.of(destinationPath));
+            inputStream.transferTo(outputStream);
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to download artifact: " + mavenArtifact, ex);
         }
         finally {
             if(inputStream != null) inputStream.close();
-            if(outputStream != null) {
-                outputStream.flush();
-                outputStream.close();
-            }
+            if(outputStream != null) outputStream.close();
             if(client != null) client.close();
         }
     }
