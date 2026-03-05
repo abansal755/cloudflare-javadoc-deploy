@@ -23,7 +23,7 @@ public class MavenCentralClient {
 
     private static final String BASE_URL = "https://repo1.maven.org/maven2";
 
-    public static List<String> getVersions(@NonNull MavenPackage mavenPackage) {
+    public static List<MavenArtifact> getArtifacts(@NonNull MavenPackage mavenPackage) {
         try {
             Document document = DocumentBuilderFactory
                     .newInstance()
@@ -33,16 +33,20 @@ public class MavenCentralClient {
                     .newInstance()
                     .newXPath();
             NodeList nodes = (NodeList) xPath.evaluate("/metadata/versioning/versions/version", document, javax.xml.xpath.XPathConstants.NODESET);
-            List<String> versions = new ArrayList<>();
+            List<MavenArtifact> artifacts = new ArrayList<>();
             for(int idx = 0; idx < nodes.getLength(); idx++)
-                versions.add(nodes.item(idx).getTextContent());
-            return versions;
+                artifacts.add(new MavenArtifact(
+                        mavenPackage.getGroupId(),
+                        mavenPackage.getArtifactId(),
+                        nodes.item(idx).getTextContent()
+                ));
+            return artifacts;
         } catch (Exception ex) {
             throw new RuntimeException("Failed to fetch versions for artifact: " + mavenPackage, ex);
         }
     }
 
-    public static void downloadArtifact(@NonNull MavenArtifact mavenArtifact, @NonNull String destinationPath) throws IOException {
+    public static void downloadArtifactToFilesystem(@NonNull MavenArtifact mavenArtifact, @NonNull String destinationPath) throws IOException {
         HttpClient client = null;
         BufferedInputStream inputStream = null;
         BufferedOutputStream outputStream = null;

@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Stream;
 
 public class Main {
 
@@ -42,9 +43,8 @@ public class Main {
             List<CompletableFuture<List<MavenArtifact>>> futures = packages
                     .stream()
                     .map(artifact -> CompletableFuture.supplyAsync(() -> MavenCentralClient
-                            .getVersions(artifact)
+                            .getArtifacts(artifact)
                             .stream()
-                            .map(version -> new MavenArtifact(artifact.getGroupId(), artifact.getArtifactId(), version))
                             .toList(), finalExecutor))
                     .toList();
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -61,7 +61,7 @@ public class Main {
                             Path path = Path.of(sitePath, artifact.getArtifactId(), artifact.getVersion());
                             Files.createDirectories(path);
                             Path jarPath = path.resolve("javadoc.jar");
-                            MavenCentralClient.downloadArtifact(artifact, jarPath.toString());
+                            MavenCentralClient.downloadArtifactToFilesystem(artifact, jarPath.toString());
                             ProcessBuilder builder = new ProcessBuilder(
                                     "unzip",
                                     "-o",
@@ -82,15 +82,12 @@ public class Main {
                     .toList();
             CompletableFuture.allOf(futures1.toArray(new CompletableFuture[0])).join();
 
-            // Generate index.html file in site directory with links to all packages
+            // Generate index.html files
             Configuration config = new Configuration(Configuration.VERSION_2_3_34);
             config.setClassLoaderForTemplateLoading(Main.class.getClassLoader(), "");
             config.setDefaultEncoding("UTF-8");
             Template template = config.getTemplate("package-index.ftl");
-            generateIndexHtml(sitePath, "/", 2, template);
-
-            // Generate index.html in package directories with links to all versions
-
+            generateIndexHtml(sitePath, "/", 2, template, executor);
         }
         catch (Exception ex) {
             throw new RuntimeException(ex);
@@ -100,16 +97,26 @@ public class Main {
         }
     }
 
-    private static void generateIndexHtml(String currentPath, String relativePath, int depth, Template template) throws IOException {
+    private static void generateIndexHtml(String currentPath, String relativePath, int depth, Template template, ExecutorService executor) throws IOException {
         if(depth == 0) return;
         Path path = Path.of(currentPath);
-        List<String> dirs = Files
-                .list(path)
-                .filter(Files::isDirectory)
-                .map(Path::getFileName)
-                .map(Path::toString)
-                .sorted()
-                .toList();
+        Stream<Path> stream = null;
+        List<String> dirs;
+        try {
+            stream = Files.list(path);
+            dirs = stream
+                    .filter(Files::isDirectory)
+                    .map(Path::getFileName)
+                    .map(Path::toString)
+                    .sorted()
+                    .toList();
+        }
+        catch (Exception ex) {
+            throw new RuntimeException("Failed to list directories in path: " + currentPath, ex);
+        }
+        finally {
+            if(stream != null) stream.close();
+        }
 
         BufferedWriter writer = null;
         try {
@@ -119,15 +126,25 @@ public class Main {
             dataModel.put("directories", dirs);
             if(!relativePath.equals("/")) dataModel.put("parentPath", "..");
             template.process(dataModel, writer);
-            for(String dir:dirs) {
-                generateIndexHtml(path.resolve(dir).toString(), relativePath + dir + "/", depth - 1, template);
-            }
         }
         catch (Exception ex) {
-            throw new RuntimeException(ex);
+            throw new RuntimeException("Failed to generate index.html for path: " + currentPath, ex);
         }
         finally {
             if(writer != null) writer.close();
         }
+
+        List<CompletableFuture<Void>> futures = dirs
+                .stream()
+                .map(dir -> CompletableFuture.runAsync(() -> {
+                    try {
+                        generateIndexHtml(path.resolve(dir).toString(), relativePath + dir + "/", depth - 1, template, executor);
+                    }
+                    catch (IOException ex) {
+                        throw new RuntimeException("Failed to generate index.html for directory: " + dir, ex);
+                    }
+                }))
+                .toList();
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 }
