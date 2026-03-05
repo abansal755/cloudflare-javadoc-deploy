@@ -5,6 +5,7 @@ import freemarker.template.Template;
 import in.co.akshitbansal.client.MavenCentralClient;
 import in.co.akshitbansal.model.MavenArtifact;
 import in.co.akshitbansal.model.MavenPackage;
+import lombok.NonNull;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -40,45 +41,15 @@ public class Main {
             ExecutorService finalExecutor = executor;
 
             // Fetch all versions for each artifact in parallel
-            List<CompletableFuture<List<MavenArtifact>>> futures = packages
-                    .stream()
-                    .map(artifact -> CompletableFuture.supplyAsync(() -> MavenCentralClient
-                            .getArtifacts(artifact)
-                            .stream()
-                            .toList(), finalExecutor))
-                    .toList();
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-            List<MavenArtifact> artifacts = futures
-                    .stream()
-                    .flatMap(future -> future.join().stream())
-                    .toList();
+            List<MavenArtifact> artifacts = getAllArtifacts(packages, executor);
 
-            // Download javadoc for each artifact in parallel and unzip contents
+            // Prepare javadoc site bundle for each artifact in parallel
             List<CompletableFuture<Void>> futures1 = artifacts
                     .stream()
-                    .map(artifact -> CompletableFuture.runAsync(() -> {
-                        try {
-                            Path path = Path.of(sitePath, artifact.getArtifactId(), artifact.getVersion());
-                            Files.createDirectories(path);
-                            Path jarPath = path.resolve("javadoc.jar");
-                            MavenCentralClient.downloadArtifactToFilesystem(artifact, jarPath.toString());
-                            ProcessBuilder builder = new ProcessBuilder(
-                                    "unzip",
-                                    "-o",
-                                    jarPath.toString(),
-                                    "-d",
-                                    path.toString()
-                            );
-                            builder.inheritIO();
-                            Process process = builder.start();
-                            int exitCode = process.waitFor();
-                            if(exitCode != 0) throw new RuntimeException("Failed to unzip javadoc for artifact: " + artifact);
-                            Files.delete(jarPath);
-                        }
-                        catch (Exception ex) {
-                            throw new RuntimeException("Failed to download artifact: " + artifact, ex);
-                        }
-                    }, finalExecutor))
+                    .map(artifact -> CompletableFuture.runAsync(
+                            () -> prepareJavadocSiteBundle(sitePath, artifact),
+                            finalExecutor
+                    ))
                     .toList();
             CompletableFuture.allOf(futures1.toArray(new CompletableFuture[0])).join();
 
@@ -97,8 +68,58 @@ public class Main {
         }
     }
 
+    private static List<MavenArtifact> getAllArtifacts(@NonNull List<MavenPackage> packages, @NonNull ExecutorService executor) {
+        List<CompletableFuture<List<MavenArtifact>>> futures = packages
+                .stream()
+                .map(artifact -> CompletableFuture.supplyAsync(() -> MavenCentralClient
+                        .getArtifacts(artifact)
+                        .stream()
+                        .toList(), executor))
+                .toList();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        return futures
+                .stream()
+                .flatMap(future -> future.join().stream())
+                .toList();
+    }
+
+    private static void prepareJavadocSiteBundle(@NonNull String sitePath, @NonNull MavenArtifact artifact) {
+        try {
+            // Create directory for the artifact if not exists
+            Path path = Path.of(sitePath, artifact.getArtifactId(), artifact.getVersion());
+            Files.createDirectories(path);
+
+            // Download javadoc jar to the directory
+            Path jarPath = path.resolve("javadoc.jar");
+            MavenCentralClient.downloadArtifactToFilesystem(artifact, jarPath.toString());
+
+            // Unzip the jar contents to the same directory
+            ProcessBuilder builder = new ProcessBuilder(
+                    "unzip",
+                    "-o",
+                    jarPath.toString(),
+                    "-d",
+                    path.toString()
+            );
+            // builder.inheritIO();
+            Process process = builder.start();
+            int exitCode = process.waitFor();
+            if(exitCode != 0) throw new IllegalStateException("Failed to unzip javadoc for artifact: " + artifact);
+
+            // Delete the jar file after extraction
+            Files.delete(jarPath);
+        }
+        catch (Exception ex) {
+            throw new RuntimeException("Failed to download artifact: " + artifact, ex);
+        }
+    }
+
     private static void generateIndexHtml(String currentPath, String relativePath, int depth, Template template, ExecutorService executor) throws IOException {
         if(depth == 0) return;
+
+        // List directories in the current path
         Path path = Path.of(currentPath);
         Stream<Path> stream = null;
         List<String> dirs;
@@ -118,6 +139,7 @@ public class Main {
             if(stream != null) stream.close();
         }
 
+        // Generate index.html using the template and save it to the current directory
         BufferedWriter writer = null;
         try {
             writer = Files.newBufferedWriter(path.resolve("index.html"));
@@ -134,6 +156,7 @@ public class Main {
             if(writer != null) writer.close();
         }
 
+        // Recursively generate index.html for each subdirectory in parallel
         List<CompletableFuture<Void>> futures = dirs
                 .stream()
                 .map(dir -> CompletableFuture.runAsync(() -> {
@@ -145,6 +168,6 @@ public class Main {
                     }
                 }, executor))
                 .toList();
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 }
