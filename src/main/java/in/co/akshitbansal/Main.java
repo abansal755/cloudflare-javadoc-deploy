@@ -117,7 +117,7 @@ public class Main {
             Map<String, Object> dataModel = new HashMap<>();
             dataModel.put("currentPath", relativePath);
             dataModel.put("directories", dirs);
-            if(!relativePath.equals("/")) dataModel.put("parentPath", "../");
+            if(!relativePath.equals("/")) dataModel.put("parentPath", "..");
             template.process(dataModel, writer);
             for(String dir:dirs) {
                 generateIndexHtml(path.resolve(dir).toString(), relativePath + dir + "/", depth - 1, template);
