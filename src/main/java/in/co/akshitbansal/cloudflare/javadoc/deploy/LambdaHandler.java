@@ -1,44 +1,43 @@
-package in.co.akshitbansal;
+package in.co.akshitbansal.cloudflare.javadoc.deploy;
 
+import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.RequestHandler;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
-import in.co.akshitbansal.client.MavenCentralClient;
-import in.co.akshitbansal.model.MavenArtifact;
-import in.co.akshitbansal.model.MavenPackage;
-import in.co.akshitbansal.service.CloudflareService;
-import in.co.akshitbansal.service.FilesystemService;
-import in.co.akshitbansal.service.IndexHtmlGeneratingService;
-import in.co.akshitbansal.service.MavenCentralService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.CloudflareService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.FilesystemService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.IndexHtmlGeneratingService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.MavenCentralService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @Slf4j
-public class Main {
+public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
 
-    public static void main(String[] args) {
+    @Override
+    public Void handleRequest(LambdaInput lambdaInput, Context context) {
+        validateInput(lambdaInput);
+        log.info("Found packages to scan: {}", lambdaInput.getPackages());
+
         // Instantiating virtual thread pool
         try(ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Validate required system properties
-            String packagesArg = System.getProperty("packages");
-            if(packagesArg == null) {
-                throw new IllegalArgumentException("Comma separated list of packages to scan must be provided as a system property with key 'packages'");
-            }
-
-            String CLOUDFLARE_API_TOKEN = System.getProperty("cloudflare.api-token");
+            String CLOUDFLARE_API_TOKEN = System.getenv("CLOUDFLARE_API_TOKEN");
             if(CLOUDFLARE_API_TOKEN == null) {
-                throw new IllegalArgumentException("Cloudflare API token must be provided as system property with key 'cloudflare.api-token'");
+                throw new IllegalArgumentException("Cloudflare API token must be provided as environment variable with key 'CLOUDFLARE_API_TOKEN'");
             }
 
-            String CLOUDFLARE_PROJECT_NAME = System.getProperty("cloudflare.project-name");
+            String CLOUDFLARE_PROJECT_NAME = System.getenv("CLOUDFLARE_PROJECT_NAME");
             if(CLOUDFLARE_PROJECT_NAME == null) {
-                throw new IllegalArgumentException("Cloudflare Pages project name must be provided as system property with key 'cloudflare.project-name'");
+                throw new IllegalArgumentException("Cloudflare project name must be provided as system property with key 'CLOUDFLARE_PROJECT_NAME'");
             }
 
             // Instantiating MavenCentralClient bean
@@ -51,7 +50,7 @@ public class Main {
 
             // Instantiating IndexHtmlGeneratingService bean
             Configuration config = new Configuration(Configuration.VERSION_2_3_34);
-            config.setClassLoaderForTemplateLoading(Main.class.getClassLoader(), "");
+            config.setClassLoaderForTemplateLoading(LambdaHandler.class.getClassLoader(), "");
             config.setDefaultEncoding("UTF-8");
             Template template = config.getTemplate("package-index.ftl");
             IndexHtmlGeneratingService indexHtmlGeneratingService = new IndexHtmlGeneratingService(executor, template);
@@ -62,39 +61,34 @@ public class Main {
             // Instantiating FilesystemService bean
             FilesystemService filesystemService = new FilesystemService();
 
-            // Running the main logic
-            // Parse the packages from the system property
-            List<MavenPackage> packages = Arrays
-                    .stream(packagesArg.split(","))
-                    .map(Main::parsePackage)
-                    .toList();
-            log.info("Found packages to scan: {}", packages);
             // Fetch all artifacts for the given packages from Maven Central
-            List<MavenArtifact> artifacts = mavenCentralService.getAllArtifacts(packages);
+            List<MavenArtifact> artifacts = mavenCentralService.getAllArtifacts(lambdaInput.getPackages());
 
             // Create a temporary directory to prepare the javadoc site bundle
-            Path sitePath = Files.createTempDirectory("cloudflare-javadoc");
-            String siteDir = sitePath.toString();
+            Path tempDir = Files.createTempDirectory("cloudflare-javadoc");
+            String siteDir = tempDir.resolve("site").toString();
             log.info("Created temporary directory for javadoc site bundle: {}", siteDir);
+
             // Prepare the javadoc bundles for all artifacts in the temporary directory
             mavenCentralService.prepareJavadocBundles(siteDir, artifacts);
             // Generate index.html for the javadoc site
             indexHtmlGeneratingService.generateIndexHtml(siteDir, 2);
             // Deploy the generated javadoc site to Cloudflare Pages
-            cloudflareService.deploy(siteDir);
+            cloudflareService.deploy(siteDir, tempDir.toString());
             // Clean up the temporary directory
-            filesystemService.deleteDirectoryRecursively(siteDir);
+            filesystemService.deleteDirectoryRecursively(tempDir.toString());
         }
         catch (Exception ex) {
+            log.error("Failed to deploy javadoc site to Cloudflare Pages", ex);
             throw new RuntimeException("Failed to deploy javadoc site to Cloudflare Pages", ex);
         }
+        return null;
     }
 
-    private static MavenPackage parsePackage(String packageStr) {
-        String[] parts = packageStr.split(":");
-        if(parts.length != 2) {
-            throw new IllegalArgumentException("Invalid package format: " + packageStr + ". Expected format is groupId:artifactId");
-        }
-        return new MavenPackage(parts[0], parts[1]);
+    private void validateInput(LambdaInput lambdaInput) {
+        if(lambdaInput == null)
+            throw new IllegalArgumentException("Input cannot be null");
+        if(lambdaInput.getPackages() == null || lambdaInput.getPackages().isEmpty())
+            throw new IllegalArgumentException("At least one package must be provided in the input");
     }
 }

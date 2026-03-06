@@ -1,7 +1,7 @@
-package in.co.akshitbansal.client;
+package in.co.akshitbansal.cloudflare.javadoc.deploy.client;
 
-import in.co.akshitbansal.model.MavenArtifact;
-import in.co.akshitbansal.model.MavenPackage;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

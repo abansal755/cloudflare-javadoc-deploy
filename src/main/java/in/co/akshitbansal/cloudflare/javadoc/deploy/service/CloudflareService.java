@@ -1,8 +1,9 @@
-package in.co.akshitbansal.service;
+package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.File;
 import java.io.InputStream;
 import java.text.MessageFormat;
 import java.util.Map;
@@ -14,7 +15,7 @@ public class CloudflareService {
     private final String CLOUDFLARE_API_TOKEN;
     private final String CLOUDFLARE_PROJECT_NAME;
 
-    public void deploy(String sitePath) {
+    public void deploy(String sitePath, String workingDirectory) {
         try {
             log.info("Started deploying {} to Cloudflare Pages project {}", sitePath, CLOUDFLARE_PROJECT_NAME);
 
@@ -26,6 +27,8 @@ public class CloudflareService {
                     sitePath,
                     "--project-name=" + CLOUDFLARE_PROJECT_NAME
             );
+            // Set the working directory to /tmp which is the only writable directory in the Lambda execution environment. This is required for Wrangler CLI to create its configuration file and cache.
+            builder.directory(new File(workingDirectory));
 
             // Set the environment variable for the API token
             Map<String,String> env = builder.environment();

@@ -1,4 +1,4 @@
-package in.co.akshitbansal.model;
+package in.co.akshitbansal.cloudflare.javadoc.deploy.model;
 
 import lombok.EqualsAndHashCode;
 import lombok.Getter;

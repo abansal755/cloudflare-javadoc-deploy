@@ -1,4 +1,4 @@
-package in.co.akshitbansal.service;
+package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import lombok.extern.slf4j.Slf4j;
 
