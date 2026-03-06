@@ -3,6 +3,7 @@ package in.co.akshitbansal.client;
 import in.co.akshitbansal.model.MavenArtifact;
 import in.co.akshitbansal.model.MavenPackage;
 import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
@@ -19,12 +20,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
+@RequiredArgsConstructor
 public class MavenCentralClient {
 
-    private static final HttpClient client = HttpClient.newHttpClient();
-    private static final String BASE_URL = "https://repo1.maven.org/maven2";
+    private final HttpClient httpClient;
+    private final String BASE_URL;
 
-    public static List<MavenArtifact> getArtifacts(@NonNull MavenPackage mavenPackage) {
+    public List<MavenArtifact> getArtifacts(@NonNull MavenPackage mavenPackage) {
         try {
             Document document = DocumentBuilderFactory
                     .newInstance()
@@ -48,7 +50,7 @@ public class MavenCentralClient {
         }
     }
 
-    public static InputStream getJavadocInputStream(@NonNull MavenArtifact mavenArtifact) {
+    public InputStream getJavadocJarInputStream(@NonNull MavenArtifact mavenArtifact) {
         try {
             URI uri = URI.create(BASE_URL + getJavadocPath(mavenArtifact));
             log.info("GET {}", uri);
@@ -56,7 +58,7 @@ public class MavenCentralClient {
                     .newBuilder()
                     .uri(uri)
                     .build();
-            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             return response.body();
         }
         catch (Exception ex) {
@@ -64,7 +66,7 @@ public class MavenCentralClient {
         }
     }
 
-    private static String getMetadataPath(MavenPackage mavenPackage) {
+    private String getMetadataPath(MavenPackage mavenPackage) {
         return String.format(
                 "/%s/%s/maven-metadata.xml",
                 mavenPackage.getGroupId().replace(".", "/"),
@@ -72,7 +74,7 @@ public class MavenCentralClient {
         );
     }
 
-    private static String getJavadocPath(MavenArtifact mavenArtifact) {
+    private String getJavadocPath(MavenArtifact mavenArtifact) {
         return String.format(
                 "/%s/%s/%s/%s-%s-javadoc.jar",
                 mavenArtifact.getGroupId().replace(".", "/"),
