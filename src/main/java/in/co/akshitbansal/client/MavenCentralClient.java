@@ -3,6 +3,7 @@ package in.co.akshitbansal.client;
 import in.co.akshitbansal.model.MavenArtifact;
 import in.co.akshitbansal.model.MavenPackage;
 import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
 
@@ -17,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 public class MavenCentralClient {
 
     private static final HttpClient client = HttpClient.newHttpClient();
@@ -32,24 +34,27 @@ public class MavenCentralClient {
                     .newInstance()
                     .newXPath();
             NodeList nodes = (NodeList) xPath.evaluate("/metadata/versioning/versions/version", document, javax.xml.xpath.XPathConstants.NODESET);
-            List<MavenArtifact> artifacts = new ArrayList<>();
+            List<String> artifacts = new ArrayList<>();
             for(int idx = 0; idx < nodes.getLength(); idx++)
-                artifacts.add(new MavenArtifact(
-                        mavenPackage.getGroupId(),
-                        mavenPackage.getArtifactId(),
-                        nodes.item(idx).getTextContent()
-                ));
-            return artifacts;
-        } catch (Exception ex) {
+                artifacts.add(nodes.item(idx).getTextContent());
+            log.info("Fetched versions for package {}: {}", mavenPackage, artifacts);
+            return artifacts
+                    .stream()
+                    .map(version -> new MavenArtifact(mavenPackage.getGroupId(), mavenPackage.getArtifactId(), version))
+                    .toList();
+        }
+        catch (Exception ex) {
             throw new RuntimeException("Failed to fetch versions for artifact: " + mavenPackage, ex);
         }
     }
 
     public static InputStream getJavadocInputStream(@NonNull MavenArtifact mavenArtifact) {
         try {
+            URI uri = URI.create(BASE_URL + getJavadocPath(mavenArtifact));
+            log.info("GET {}", uri);
             HttpRequest request = HttpRequest
                     .newBuilder()
-                    .uri(URI.create(BASE_URL + getJavadocPath(mavenArtifact)))
+                    .uri(uri)
                     .build();
             HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
             return response.body();
