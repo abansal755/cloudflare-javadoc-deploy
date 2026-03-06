@@ -32,11 +32,21 @@ public class Main {
     public static void main(String[] args) throws IOException {
         try {
             log.info("Started cloudflare javadoc deployment");
-            // List of artifacts from 0th argument, separated by ","
-            if(args.length == 0)
-                throw new IllegalArgumentException("No artifacts provided. Please provide a comma separated list of artifacts in the format groupId:artifactId as the first argument");
+            // List of artifacts from system property
+            String packagesArg = System.getProperty("packages");
+            if(packagesArg == null)
+                throw new IllegalArgumentException("No artifacts provided. Please provide a comma separated list of artifacts in the format groupId:artifactId using the 'packages' system property");
+
+            // cloudflare pages project name and api token from system properties
+            String projectName = System.getProperty("cloudflare.project-name");
+            String apiToken = System.getProperty("cloudflare.api-token");
+            if(projectName == null)
+                throw new IllegalArgumentException("No Cloudflare Pages project name provided. Please provide the project name using the 'cloudflare.project-name' system property");
+            if(apiToken == null)
+                throw new IllegalArgumentException("No Cloudflare API token provided. Please provide the API token using the 'cloudflare.api-token' system property");
+
             List<MavenPackage> packages = Arrays
-                    .stream(args[0].split(","))
+                    .stream(packagesArg.split(","))
                     .map(artifact -> {
                         String[] splits = artifact.split(":");
                         return new MavenPackage(splits[0], splits[1]);
@@ -73,6 +83,9 @@ public class Main {
                 Template template = config.getTemplate("package-index.ftl");
                 generateIndexHtml(sitePath, "/", 2, template, executor);
                 log.info("Completed generating index.html files");
+
+                // Deploy the javadoc site to Cloudflare Pages using Wrangler CLI
+                deployToCloudflare(sitePath, projectName, apiToken);
             }
             log.info("Completed cloudflare javadoc deployment");
         }
@@ -201,6 +214,34 @@ public class Main {
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to recursively delete directory: " + path, ex);
+        }
+    }
+
+    private static void deployToCloudflare(String sitePath, String projectName, String apiToken) {
+        try {
+            log.info("Started deploying javadoc site to Cloudflare Pages using Wrangler CLI");
+            ProcessBuilder builder = new ProcessBuilder(
+                    "npx",
+                    "wrangler",
+                    "pages",
+                    "deploy",
+                    sitePath,
+                    "--project-name=" + projectName
+            );
+            Map<String,String> env = builder.environment();
+            env.put("CLOUDFLARE_API_TOKEN", apiToken);
+
+            Process process = builder.start();
+            int exitCode = process.waitFor();
+            if(exitCode != 0) {
+                String errorOutput = new String(process.getErrorStream().readAllBytes());
+                throw new RuntimeException("Failed to deploy javadoc site to Cloudflare Pages. Wrangler exited with code " + exitCode + ". Error output: " + errorOutput);
+            }
+            String output = new String(process.getInputStream().readAllBytes());
+            log.info("Successfully deployed javadoc site to Cloudflare Pages. Wrangler output: {}", output);
+        }
+        catch (IOException | InterruptedException ex) {
+            throw new RuntimeException("Failed to deploy javadoc site to Cloudflare Pages", ex);
         }
     }
 }
