@@ -6,6 +6,7 @@ import in.co.akshitbansal.client.MavenCentralClient;
 import in.co.akshitbansal.model.MavenArtifact;
 import in.co.akshitbansal.model.MavenPackage;
 import in.co.akshitbansal.service.CloudflareService;
+import in.co.akshitbansal.service.FilesystemService;
 import in.co.akshitbansal.service.IndexHtmlGeneratingService;
 import in.co.akshitbansal.service.MavenCentralService;
 import lombok.extern.slf4j.Slf4j;
@@ -58,6 +59,9 @@ public class Main {
             // Instantiating CloudflareService bean
             CloudflareService cloudflareService = new CloudflareService(CLOUDFLARE_API_TOKEN, CLOUDFLARE_PROJECT_NAME);
 
+            // Instantiating FilesystemService bean
+            FilesystemService filesystemService = new FilesystemService();
+
             // Running the main logic
             // Parse the packages from the system property
             List<MavenPackage> packages = Arrays
@@ -76,7 +80,10 @@ public class Main {
             mavenCentralService.prepareJavadocBundles(siteDir, artifacts);
             // Generate index.html for the javadoc site
             indexHtmlGeneratingService.generateIndexHtml(siteDir, 2);
+            // Deploy the generated javadoc site to Cloudflare Pages
             cloudflareService.deploy(siteDir);
+            // Clean up the temporary directory
+            filesystemService.deleteDirectoryRecursively(siteDir);
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to deploy javadoc site to Cloudflare Pages", ex);
