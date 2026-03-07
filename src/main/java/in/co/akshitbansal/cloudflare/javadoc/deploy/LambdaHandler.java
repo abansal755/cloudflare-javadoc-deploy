@@ -12,6 +12,7 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.service.FilesystemService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.IndexHtmlGeneratingService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.MavenCentralService;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 
 import java.net.http.HttpClient;
 import java.nio.file.Files;
@@ -25,11 +26,14 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
 
     @Override
     public Void handleRequest(LambdaInput lambdaInput, Context context) {
+        // Adding AWS request ID to MDC for better traceability in logs
+        MDC.put("awsRequestId", context.getAwsRequestId());
+
         validateInput(lambdaInput);
         log.info("Found packages to scan: {}", lambdaInput.getPackages());
 
         // Instantiating virtual thread pool
-        try(ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try(ExecutorService executor = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor())) {
             String CLOUDFLARE_API_TOKEN = System.getenv("CLOUDFLARE_API_TOKEN");
             if(CLOUDFLARE_API_TOKEN == null) {
                 throw new IllegalArgumentException("Cloudflare API token must be provided as environment variable with key 'CLOUDFLARE_API_TOKEN'");
