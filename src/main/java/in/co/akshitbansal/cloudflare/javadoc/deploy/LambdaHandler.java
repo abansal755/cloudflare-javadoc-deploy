@@ -7,6 +7,7 @@ import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.CloudflareService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.FilesystemService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.IndexHtmlGeneratingService;
@@ -26,23 +27,27 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
 
     @Override
     public Void handleRequest(LambdaInput lambdaInput, Context context) {
-        // Adding AWS request ID to MDC for better traceability in logs
-        MDC.put("awsRequestId", context.getAwsRequestId());
-
+        // Validate the input
         validateInput(lambdaInput);
         log.info("Found packages to scan: {}", lambdaInput.getPackages());
 
+        // Get env variables
+        boolean DISABLE_TEMP_FILE_DELETION = Boolean.parseBoolean(System.getenv("DISABLE_TEMP_FILE_DELETION"));
+        boolean DISABLE_CLOUDFLARE_DEPLOYMENT = Boolean.parseBoolean(System.getenv("DISABLE_CLOUDFLARE_DEPLOYMENT"));
+        String CLOUDFLARE_API_TOKEN = System.getenv("CLOUDFLARE_API_TOKEN");
+        if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_API_TOKEN == null) {
+            throw new IllegalArgumentException("Cloudflare API token must be provided as environment variable with key 'CLOUDFLARE_API_TOKEN'");
+        }
+        String CLOUDFLARE_PROJECT_NAME = System.getenv("CLOUDFLARE_PROJECT_NAME");
+        if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_PROJECT_NAME == null) {
+            throw new IllegalArgumentException("Cloudflare project name must be provided as system property with key 'CLOUDFLARE_PROJECT_NAME'");
+        }
+
+        // Adding AWS request ID to MDC for better traceability in logs
+        MDC.put("awsRequestId", context.getAwsRequestId());
+
         // Instantiating virtual thread pool
         try(ExecutorService executor = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor())) {
-            String CLOUDFLARE_API_TOKEN = System.getenv("CLOUDFLARE_API_TOKEN");
-            if(CLOUDFLARE_API_TOKEN == null) {
-                throw new IllegalArgumentException("Cloudflare API token must be provided as environment variable with key 'CLOUDFLARE_API_TOKEN'");
-            }
-
-            String CLOUDFLARE_PROJECT_NAME = System.getenv("CLOUDFLARE_PROJECT_NAME");
-            if(CLOUDFLARE_PROJECT_NAME == null) {
-                throw new IllegalArgumentException("Cloudflare project name must be provided as system property with key 'CLOUDFLARE_PROJECT_NAME'");
-            }
 
             // Instantiating MavenCentralClient bean
             HttpClient httpClient = HttpClient.newHttpClient();
@@ -75,12 +80,17 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
 
             // Prepare the javadoc bundles for all artifacts in the temporary directory
             mavenCentralService.prepareJavadocBundles(siteDir, artifacts);
+
             // Generate index.html for the javadoc site
-            indexHtmlGeneratingService.generateIndexHtml(siteDir, 2);
+            indexHtmlGeneratingService.generateIndexHtml(siteDir, 3);
+
             // Deploy the generated javadoc site to Cloudflare Pages
-            cloudflareService.deploy(siteDir, tempDir.toString());
+            if(DISABLE_CLOUDFLARE_DEPLOYMENT) log.warn("Cloudflare deployment is disabled. Skipping deployment step.");
+            else cloudflareService.deploy(siteDir, tempDir.toString());
+
             // Clean up the temporary directory
-            filesystemService.deleteDirectoryRecursively(tempDir.toString());
+            if(DISABLE_TEMP_FILE_DELETION) log.warn("Temporary file deletion is disabled. Skipping deletion of temporary directory: {}", tempDir);
+            else filesystemService.deleteDirectoryRecursively(tempDir.toString());
         }
         catch (Exception ex) {
             log.error("Failed to deploy javadoc site to Cloudflare Pages", ex);
@@ -92,7 +102,14 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
     private void validateInput(LambdaInput lambdaInput) {
         if(lambdaInput == null)
             throw new IllegalArgumentException("Input cannot be null");
-        if(lambdaInput.getPackages() == null || lambdaInput.getPackages().isEmpty())
+        List<MavenPackage> packages = lambdaInput.getPackages();
+        if(packages == null || packages.isEmpty())
             throw new IllegalArgumentException("At least one package must be provided in the input");
+        packages.forEach(mavenPackage -> {
+            if(mavenPackage.getGroupId() == null || mavenPackage.getGroupId().isBlank())
+                throw new IllegalArgumentException("Group ID cannot be null or blank for package: " + mavenPackage);
+            if(mavenPackage.getArtifactId() == null || mavenPackage.getArtifactId().isBlank())
+                throw new IllegalArgumentException("Artifact ID cannot be null or blank for package: " + mavenPackage);
+        });
     }
 }

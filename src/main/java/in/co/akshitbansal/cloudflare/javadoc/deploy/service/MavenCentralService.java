@@ -72,7 +72,7 @@ public class MavenCentralService {
             log.info("Started preparing javadoc site bundle for artifact: {}", artifact);
 
             // Create directory for the artifact if not exists
-            Path path = Path.of(sitePath, artifact.getArtifactId(), artifact.getVersion());
+            Path path = Path.of(sitePath, artifact.getGroupId(), artifact.getArtifactId(), artifact.getVersion());
             Files.createDirectories(path);
             log.info("Created directory for artifact: {}", path);
 
