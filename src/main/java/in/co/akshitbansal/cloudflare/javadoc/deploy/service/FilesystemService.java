@@ -20,14 +20,14 @@ public class FilesystemService {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     Files.delete(file);
-                    log.info("Deleted file at path: {}", file);
+                    // log.info("Deleted file at path: {}", file);
                     return FileVisitResult.CONTINUE;
                 }
 
                 @Override
                 public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
                     Files.delete(dir);
-                    log.info("Deleted directory at path: {}", dir);
+                    // log.info("Deleted directory at path: {}", dir);
                     return FileVisitResult.CONTINUE;
                 }
             });
