@@ -41,7 +41,8 @@ public class IndexHtmlGeneratingService {
             log.info("Found directories: {}", dirs);
 
             // Generate index.html using the template and save it to the current directory
-            generateAndSaveIndexHtml(path, relativePath, dirs);
+            boolean isVersionListingPage = (depth == 1);
+            generateAndSaveIndexHtml(path, relativePath, dirs, isVersionListingPage);
 
             // Recursively generate index.html for each subdirectory in parallel
             List<CompletableFuture<Void>> futures = dirs
@@ -76,11 +77,26 @@ public class IndexHtmlGeneratingService {
                 .toList();
     }
 
-    private void generateAndSaveIndexHtml(Path path, String relativePath, List<String> dirs) throws IOException, TemplateException {
+    private void generateAndSaveIndexHtml(Path path, String relativePath, List<String> dirs, boolean isVersionListingPage) throws IOException, TemplateException {
         @Cleanup BufferedWriter writer = Files.newBufferedWriter(path.resolve("index.html"));
         Map<String, Object> dataModel = new HashMap<>();
         dataModel.put("currentPath", relativePath);
         dataModel.put("directories", dirs);
+
+        // Specifically for version listing pages
+        if (isVersionListingPage) {
+            boolean hasSnapshotDirectories = dirs
+                    .stream()
+                    .anyMatch(dir -> dir.endsWith("-SNAPSHOT"));
+            boolean hasReleaseDirectories = dirs
+                    .stream()
+                    .anyMatch(dir -> !dir.endsWith("-SNAPSHOT"));
+            // Show the snapshot toggle only if there are both snapshot and release directories present.
+            // If there are only snapshot directories or only release directories, then the toggle is not needed and can be hidden.
+            dataModel.put("showSnapshotToggle", hasReleaseDirectories && hasSnapshotDirectories);
+        }
+        else dataModel.put("showSnapshotToggle", false);
+
         if (!relativePath.equals("/")) dataModel.put("parentPath", "..");
         freemarkerTemplate.process(dataModel, writer);
         log.info("Generated index.html for path: {}", path);
