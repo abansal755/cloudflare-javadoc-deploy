@@ -2,6 +2,7 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.VersionComparator;
 import lombok.Cleanup;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -71,7 +72,7 @@ public class IndexHtmlGeneratingService {
                 .filter(Files::isDirectory)
                 .map(Path::getFileName)
                 .map(Path::toString)
-                .sorted()
+                .sorted(new VersionComparator())
                 .toList();
     }
 

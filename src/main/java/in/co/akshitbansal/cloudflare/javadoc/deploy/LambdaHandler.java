@@ -7,12 +7,14 @@ import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.*;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
 import java.net.http.HttpClient;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,6 +30,7 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         // Get env variables
         boolean DISABLE_TEMP_FILE_DELETION = Boolean.parseBoolean(System.getenv("DISABLE_TEMP_FILE_DELETION"));
         boolean DISABLE_CLOUDFLARE_DEPLOYMENT = Boolean.parseBoolean(System.getenv("DISABLE_CLOUDFLARE_DEPLOYMENT"));
+        boolean DISABLE_SNAPSHOTS = Boolean.parseBoolean(System.getenv("DISABLE_SNAPSHOTS"));
         String CLOUDFLARE_API_TOKEN = System.getenv("CLOUDFLARE_API_TOKEN");
         if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_API_TOKEN == null) {
             throw new IllegalArgumentException("Cloudflare API token must be provided as environment variable with key 'CLOUDFLARE_API_TOKEN'");
@@ -44,9 +47,18 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         @Cleanup ExecutorService executor = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());
 
         // Instantiating MavenCentralClient bean
-        HttpClient httpClient = HttpClient.newHttpClient();
-        String MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2";
-        MavenCentralClient mavenCentralClient = new MavenCentralClient(httpClient, MAVEN_CENTRAL_BASE_URL);
+        HttpClient httpClient = HttpClient
+                .newBuilder()
+                .followRedirects(HttpClient.Redirect.NORMAL) // Always follow redirects, except from HTTPS URLs to HTTP URLs
+                .build();
+
+        List<MavenRepository> repositories = new ArrayList<>();
+        // For stable releases
+        repositories.add(new MavenRepository("https://repo1.maven.org/maven2", false));
+        // For snapshots
+        if(!DISABLE_SNAPSHOTS)
+            repositories.add(new MavenRepository("https://central.sonatype.com/repository/maven-snapshots", true));
+        MavenCentralClient mavenCentralClient = new MavenCentralClient(httpClient, repositories);
 
         // Instantiating MavenCentralService bean
         MavenCentralService mavenCentralService = new MavenCentralService(executor, mavenCentralClient);
