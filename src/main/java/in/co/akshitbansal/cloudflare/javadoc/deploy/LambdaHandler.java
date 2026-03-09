@@ -8,6 +8,7 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.*;
+import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
@@ -40,48 +41,47 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         MDC.put("awsRequestId", context.getAwsRequestId());
 
         // Instantiating virtual thread pool
-        try(ExecutorService executor = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor())) {
+        @Cleanup ExecutorService executor = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());
 
-            // Instantiating MavenCentralClient bean
-            HttpClient httpClient = HttpClient.newHttpClient();
-            String MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2";
-            MavenCentralClient mavenCentralClient = new MavenCentralClient(httpClient, MAVEN_CENTRAL_BASE_URL);
+        // Instantiating MavenCentralClient bean
+        HttpClient httpClient = HttpClient.newHttpClient();
+        String MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2";
+        MavenCentralClient mavenCentralClient = new MavenCentralClient(httpClient, MAVEN_CENTRAL_BASE_URL);
 
-            // Instantiating MavenCentralService bean
-            MavenCentralService mavenCentralService = new MavenCentralService(executor, mavenCentralClient);
+        // Instantiating MavenCentralService bean
+        MavenCentralService mavenCentralService = new MavenCentralService(executor, mavenCentralClient);
 
-            // Instantiating IndexHtmlGeneratingService bean
-            Configuration config = new Configuration(Configuration.VERSION_2_3_34);
-            config.setClassLoaderForTemplateLoading(LambdaHandler.class.getClassLoader(), "");
-            config.setDefaultEncoding("UTF-8");
-            Template template;
-            try {
-                template = config.getTemplate("package-index.ftl");
-            }
-            catch (Exception ex) {
-                throw new RuntimeException("Failed to load freemarker template: package-index.ftl", ex);
-            }
-            IndexHtmlGeneratingService indexHtmlGeneratingService = new IndexHtmlGeneratingService(executor, template);
-
-            // Instantiating CloudflareService bean
-            CloudflareService cloudflareService = new CloudflareService(CLOUDFLARE_API_TOKEN, CLOUDFLARE_PROJECT_NAME);
-
-            // Instantiating FilesystemService bean
-            FilesystemService filesystemService = new FilesystemService();
-
-            // Instantiating DeploymentService bean
-            DeploymentService deploymentService = new DeploymentService(
-                    mavenCentralService,
-                    indexHtmlGeneratingService,
-                    cloudflareService,
-                    filesystemService,
-                    DISABLE_CLOUDFLARE_DEPLOYMENT,
-                    DISABLE_TEMP_FILE_DELETION
-            );
-
-            // Trigger the deployment process
-            deploymentService.deploy(lambdaInput.getPackages());
+        // Instantiating IndexHtmlGeneratingService bean
+        Configuration config = new Configuration(Configuration.VERSION_2_3_34);
+        config.setClassLoaderForTemplateLoading(LambdaHandler.class.getClassLoader(), "");
+        config.setDefaultEncoding("UTF-8");
+        Template template;
+        try {
+            template = config.getTemplate("package-index.ftl");
         }
+        catch (Exception ex) {
+            throw new RuntimeException("Failed to load freemarker template: package-index.ftl", ex);
+        }
+        IndexHtmlGeneratingService indexHtmlGeneratingService = new IndexHtmlGeneratingService(executor, template);
+
+        // Instantiating CloudflareService bean
+        CloudflareService cloudflareService = new CloudflareService(CLOUDFLARE_API_TOKEN, CLOUDFLARE_PROJECT_NAME);
+
+        // Instantiating FilesystemService bean
+        FilesystemService filesystemService = new FilesystemService();
+
+        // Instantiating DeploymentService bean
+        DeploymentService deploymentService = new DeploymentService(
+                mavenCentralService,
+                indexHtmlGeneratingService,
+                cloudflareService,
+                filesystemService,
+                DISABLE_CLOUDFLARE_DEPLOYMENT,
+                DISABLE_TEMP_FILE_DELETION
+        );
+
+        // Trigger the deployment process
+        deploymentService.deploy(lambdaInput.getPackages());
         return null;
     }
 

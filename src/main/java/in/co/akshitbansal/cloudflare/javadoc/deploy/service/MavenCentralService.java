@@ -3,6 +3,7 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
+import lombok.Cleanup;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -77,17 +78,16 @@ public class MavenCentralService {
             log.info("Created directory for artifact: {}", path);
 
             // Download the javadoc zip from Maven Central and extract it to the artifact directory using streaming
-            try(ZipInputStream zipInputStream = new ZipInputStream(mavenCentralClient.getJavadocJarInputStream(artifact))) {
-                ZipEntry entry;
-                while((entry = zipInputStream.getNextEntry()) != null) {
-                    Path entryPath = path.resolve(entry.getName()).normalize();
-                    if(entry.isDirectory()) Files.createDirectories(entryPath);
-                    else {
-                        Files.createDirectories(entryPath.getParent());
-                        Files.copy(zipInputStream, entryPath);
-                    }
-                    zipInputStream.closeEntry();
+            @Cleanup ZipInputStream zipInputStream = new ZipInputStream(mavenCentralClient.getJavadocJarInputStream(artifact));
+            ZipEntry entry;
+            while((entry = zipInputStream.getNextEntry()) != null) {
+                Path entryPath = path.resolve(entry.getName()).normalize();
+                if(entry.isDirectory()) Files.createDirectories(entryPath);
+                else {
+                    Files.createDirectories(entryPath.getParent());
+                    Files.copy(zipInputStream, entryPath);
                 }
+                zipInputStream.closeEntry();
             }
 
             log.info("Completed preparing javadoc site bundle for artifact: {}", artifact);

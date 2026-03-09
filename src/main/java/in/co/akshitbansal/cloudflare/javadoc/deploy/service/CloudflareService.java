@@ -1,5 +1,6 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
+import lombok.Cleanup;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -37,18 +38,16 @@ public class CloudflareService {
             Process process = builder.start();
             int exitCode = process.waitFor();
             if(exitCode != 0) {
-                InputStream errorStream = process.getErrorStream();
+                @Cleanup InputStream errorStream = process.getErrorStream();
                 String errorOutput = new String(errorStream.readAllBytes());
-                errorStream.close();
                 throw new IllegalStateException(MessageFormat.format(
                         "Wrangler CLI failed exited with code {0}. Error output: {1}",
                         exitCode, errorOutput
                 ));
             }
 
-            InputStream inputStream = process.getInputStream();
+            @Cleanup InputStream inputStream = process.getInputStream();
             String output = new String(inputStream.readAllBytes());
-            inputStream.close();
             log.info("Wrangler CLI output: {}", output);
 
             log.info("Completed deploying {} to Cloudflare Pages project {}", sitePath, CLOUDFLARE_PROJECT_NAME);
