@@ -25,29 +25,10 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         validateInput(lambdaInput);
 
         // Get env variables
-        boolean DISABLE_TEMP_FILE_DELETION = Boolean.parseBoolean(System.getenv("DISABLE_TEMP_FILE_DELETION"));
-        boolean DISABLE_CLOUDFLARE_DEPLOYMENT = Boolean.parseBoolean(System.getenv("DISABLE_CLOUDFLARE_DEPLOYMENT"));
-        boolean DISABLE_SNAPSHOTS = Boolean.parseBoolean(System.getenv("DISABLE_SNAPSHOTS"));
-        String CLOUDFLARE_API_TOKEN = System.getenv("CLOUDFLARE_API_TOKEN");
-        if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_API_TOKEN == null) {
-            throw new IllegalArgumentException("Cloudflare API token must be provided as environment variable with key 'CLOUDFLARE_API_TOKEN'");
-        }
-        String CLOUDFLARE_PROJECT_NAME = System.getenv("CLOUDFLARE_PROJECT_NAME");
-        if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_PROJECT_NAME == null) {
-            throw new IllegalArgumentException("Cloudflare project name must be provided as system property with key 'CLOUDFLARE_PROJECT_NAME'");
-        }
+        Props props = Props.fromEnvVariables();
 
         // Adding AWS request ID to MDC for better traceability in logs
         MDC.put("awsRequestId", context.getAwsRequestId());
-
-        // Container for properties to be injected into Guice modules
-        Props props = new Props(
-                DISABLE_SNAPSHOTS,
-                DISABLE_CLOUDFLARE_DEPLOYMENT,
-                DISABLE_TEMP_FILE_DELETION,
-                CLOUDFLARE_API_TOKEN,
-                CLOUDFLARE_PROJECT_NAME
-        );
 
         // Create Guice injector with the application module and the properties
         Injector injector = Guice.createInjector(new AppModule(props));
