@@ -8,9 +8,9 @@ import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
 import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.retry.RetryRegistry;
-import lombok.RequiredArgsConstructor;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -18,15 +18,38 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-@RequiredArgsConstructor
 public class AppModule extends AbstractModule {
 
-    private final Props props;
+    @Override
+    protected void configure() {
+        // Binding DeploymentService so that is initialized eagerly at application startup
+        bind(DeploymentService.class);
+    }
 
     @Provides
     @Singleton
     Props provideProps() {
-        return props;
+        boolean DISABLE_SNAPSHOTS = Boolean.parseBoolean(System.getenv("DISABLE_SNAPSHOTS"));
+        boolean DISABLE_CLOUDFLARE_DEPLOYMENT = Boolean.parseBoolean(System.getenv("DISABLE_CLOUDFLARE_DEPLOYMENT"));
+        boolean DISABLE_TEMP_FILE_DELETION = Boolean.parseBoolean(System.getenv("DISABLE_TEMP_FILE_DELETION"));
+
+        String CLOUDFLARE_API_TOKEN = System.getenv("CLOUDFLARE_API_TOKEN");
+        if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_API_TOKEN == null) {
+            throw new IllegalArgumentException("Cloudflare API token must be provided as environment variable with key 'CLOUDFLARE_API_TOKEN'");
+        }
+
+        String CLOUDFLARE_PROJECT_NAME = System.getenv("CLOUDFLARE_PROJECT_NAME");
+        if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_PROJECT_NAME == null) {
+            throw new IllegalArgumentException("Cloudflare project name must be provided as system property with key 'CLOUDFLARE_PROJECT_NAME'");
+        }
+
+        return new Props(
+                DISABLE_SNAPSHOTS,
+                DISABLE_CLOUDFLARE_DEPLOYMENT,
+                DISABLE_TEMP_FILE_DELETION,
+                CLOUDFLARE_API_TOKEN,
+                CLOUDFLARE_PROJECT_NAME
+        );
     }
 
     @Provides

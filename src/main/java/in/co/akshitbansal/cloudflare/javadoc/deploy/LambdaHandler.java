@@ -24,17 +24,15 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         // Validate the input
         validateInput(lambdaInput);
 
-        // Get env variables
-        Props props = Props.fromEnvVariables();
-
         // Adding AWS request ID to MDC for better traceability in logs
         MDC.put("awsRequestId", context.getAwsRequestId());
 
         // Create Guice injector with the application module and the properties
-        Injector injector = Guice.createInjector(Stage.PRODUCTION, new AppModule(props));
+        // Production stage is used to ensure that singletons are eagerly initialized at startup of the Lambda function
+        Injector injector = Guice.createInjector(Stage.PRODUCTION, new AppModule());
 
         // Instantiating thread pool with virtual threads
-        @Cleanup ExecutorService executorService = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());;
+        @Cleanup ExecutorService executorService = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());
 
         DeploymentService deploymentService = injector.getInstance(DeploymentService.class);
         deploymentService.deploy(lambdaInput.getPackages(), executorService);
