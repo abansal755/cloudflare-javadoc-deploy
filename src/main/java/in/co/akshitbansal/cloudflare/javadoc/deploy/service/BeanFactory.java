@@ -1,5 +1,6 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
+import com.google.inject.TypeLiteral;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
@@ -23,7 +24,7 @@ import java.util.concurrent.Executors;
 @RequiredArgsConstructor
 public class BeanFactory implements AutoCloseable {
 
-    private final Map<String, Object> beans = new ConcurrentHashMap<>();
+    private final Map<TypeLiteral<?>, Object> beans = new ConcurrentHashMap<>();
 
     private final boolean DISABLE_SNAPSHOTS;
     private final boolean DISABLE_CLOUDFLARE_DEPLOYMENT;
@@ -33,23 +34,29 @@ public class BeanFactory implements AutoCloseable {
     private final String CLOUDFLARE_PROJECT_NAME;
 
     public RetryRegistry getRetryRegistry() {
-        return (RetryRegistry) beans.computeIfAbsent("retryRegistry", name -> RetryRegistry.of(RetryConfig
-                .custom()
-                .maxAttempts(3)
-                .waitDuration(Duration.ofSeconds(3))
-                .retryExceptions(RetryableException.class)
-                .build()));
+        return (RetryRegistry) beans.computeIfAbsent(
+                new TypeLiteral<RetryRegistry>() {},
+                type -> RetryRegistry.of(RetryConfig
+                        .custom()
+                        .maxAttempts(3)
+                        .waitDuration(Duration.ofSeconds(3))
+                        .retryExceptions(RetryableException.class)
+                        .build()
+                ));
     }
 
     public RetryDecoratorService getRetryDecoratorService() {
+        RetryRegistry retryRegistry = getRetryRegistry();
         return (RetryDecoratorService) beans.computeIfAbsent(
-                "retryDecoratorService",
-                name -> new RetryDecoratorService(getRetryRegistry())
+                new TypeLiteral<RetryDecoratorService>() {},
+                type -> new RetryDecoratorService(retryRegistry)
         );
     }
 
     public HttpClient getHttpClient() {
-        return (HttpClient) beans.computeIfAbsent("httpClient", name -> HttpClient
+        return (HttpClient) beans.computeIfAbsent(
+                new TypeLiteral<HttpClient>() {},
+                type -> HttpClient
                 .newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL) // Always follow redirects, except from HTTPS URLs to HTTP URLs
                 .build());
@@ -57,41 +64,49 @@ public class BeanFactory implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public List<MavenRepository> getRepositories() {
-        return (List<MavenRepository>) beans.computeIfAbsent("repositories", name -> {
-            List<MavenRepository> repositories = new ArrayList<>();
-            // For stable releases
-            repositories.add(new MavenRepository("https://repo1.maven.org/maven2", false));
-            if(!DISABLE_SNAPSHOTS)
-                repositories.add(new MavenRepository("https://central.sonatype.com/repository/maven-snapshots", true));
-            return repositories;
+        return (List<MavenRepository>) beans.computeIfAbsent(
+                new TypeLiteral<List<MavenRepository>>() {},
+                type -> {
+                    List<MavenRepository> repositories = new ArrayList<>();
+                    // For stable releases
+                    repositories.add(new MavenRepository("https://repo1.maven.org/maven2", false));
+                    if(!DISABLE_SNAPSHOTS)
+                        repositories.add(new MavenRepository("https://central.sonatype.com/repository/maven-snapshots", true));
+                    return repositories;
         });
     }
 
     public MavenCentralClient getMavenCentralClient() {
+        HttpClient httpClient = getHttpClient();
+        List<MavenRepository> repositories = getRepositories();
+        RetryDecoratorService retryDecoratorService = getRetryDecoratorService();
         return (MavenCentralClient) beans.computeIfAbsent(
-                "mavenCentralClient",
-                name -> new MavenCentralClient(getHttpClient(), getRepositories(), getRetryDecoratorService())
+                new TypeLiteral<MavenCentralClient>() {},
+                type -> new MavenCentralClient(httpClient, repositories, retryDecoratorService)
         );
     }
 
     public ExecutorService getExecutor() {
         return (ExecutorService) beans.computeIfAbsent(
-                "executor",
-                name -> new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor())
+                new TypeLiteral<ExecutorService>() {},
+                type -> new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor())
         );
     }
 
     public MavenCentralService getMavenCentralService() {
+        ExecutorService executor = getExecutor();
+        MavenCentralClient mavenCentralClient = getMavenCentralClient();
         return (MavenCentralService) beans.computeIfAbsent(
-                "mavenCentralService",
-                name -> new MavenCentralService(getExecutor(), getMavenCentralClient())
+                new TypeLiteral<MavenCentralService>() {},
+                type -> new MavenCentralService(executor, mavenCentralClient)
         );
     }
 
     public IndexHtmlGeneratingService getIndexHtmlGeneratingService() {
+        ExecutorService executor = getExecutor();
         return (IndexHtmlGeneratingService) beans.computeIfAbsent(
-                "indexHtmlGeneratingService",
-                name -> {
+                new TypeLiteral<IndexHtmlGeneratingService>() {},
+                type -> {
                     Configuration config = new Configuration(Configuration.VERSION_2_3_34);
                     config.setClassLoaderForTemplateLoading(LambdaHandler.class.getClassLoader(), "");
                     config.setDefaultEncoding("UTF-8");
@@ -102,30 +117,38 @@ public class BeanFactory implements AutoCloseable {
                     catch (Exception ex) {
                         throw new RuntimeException("Failed to load freemarker template: package-index.ftl", ex);
                     }
-                    return new IndexHtmlGeneratingService(getExecutor(), template);
+                    return new IndexHtmlGeneratingService(executor, template);
                 }
         );
     }
 
     public CloudflareService getCloudflareService() {
+        RetryDecoratorService retryDecoratorService = getRetryDecoratorService();
         return (CloudflareService) beans.computeIfAbsent(
-                "cloudflareService",
-                name -> new CloudflareService(getRetryDecoratorService(), CLOUDFLARE_API_TOKEN, CLOUDFLARE_PROJECT_NAME)
+                new TypeLiteral<CloudflareService>() {},
+                type -> new CloudflareService(retryDecoratorService, CLOUDFLARE_API_TOKEN, CLOUDFLARE_PROJECT_NAME)
         );
     }
 
     public FilesystemService getFilesystemService() {
-        return (FilesystemService) beans.computeIfAbsent("filesystemService", name -> new FilesystemService());
+        return (FilesystemService) beans.computeIfAbsent(
+                new TypeLiteral<FilesystemService>() {},
+                type -> new FilesystemService()
+        );
     }
 
     public DeploymentService getDeploymentService() {
+        MavenCentralService mavenCentralService = getMavenCentralService();
+        IndexHtmlGeneratingService indexHtmlGeneratingService = getIndexHtmlGeneratingService();
+        CloudflareService cloudflareService = getCloudflareService();
+        FilesystemService filesystemService = getFilesystemService();
         return (DeploymentService) beans.computeIfAbsent(
-                "deploymentService",
-                name -> new DeploymentService(
-                        getMavenCentralService(),
-                        getIndexHtmlGeneratingService(),
-                        getCloudflareService(),
-                        getFilesystemService(),
+                new TypeLiteral<DeploymentService>() {},
+                type -> new DeploymentService(
+                        mavenCentralService,
+                        indexHtmlGeneratingService,
+                        cloudflareService,
+                        filesystemService,
                         DISABLE_CLOUDFLARE_DEPLOYMENT,
                         DISABLE_TEMP_FILE_DELETION
                 )
@@ -134,7 +157,7 @@ public class BeanFactory implements AutoCloseable {
 
     @Override
     public void close() {
-        ExecutorService executor = (ExecutorService) beans.get("executor");
+        ExecutorService executor = (ExecutorService) beans.get(new TypeLiteral<ExecutorService>() {});
         if(executor != null) executor.close();
     }
 }
