@@ -14,16 +14,16 @@ import lombok.RequiredArgsConstructor;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @RequiredArgsConstructor
 public class BeanFactory implements AutoCloseable {
 
-    private final Map<String, Object> beans = new HashMap<>();
+    private final Map<String, Object> beans = new ConcurrentHashMap<>();
 
     private final boolean DISABLE_SNAPSHOTS;
     private final boolean DISABLE_CLOUDFLARE_DEPLOYMENT;
