@@ -2,27 +2,15 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import freemarker.template.Configuration;
-import freemarker.template.Template;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.service.*;
-import io.github.resilience4j.retry.RetryConfig;
-import io.github.resilience4j.retry.RetryRegistry;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.BeanFactory;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Slf4j
 public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
@@ -48,65 +36,14 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         // Adding AWS request ID to MDC for better traceability in logs
         MDC.put("awsRequestId", context.getAwsRequestId());
 
-        // Instantiating virtual thread pool
-        @Cleanup ExecutorService executor = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());
-
-        // Instantiation RetryDecoratorService
-        RetryRegistry retryRegistry = RetryRegistry.of(RetryConfig
-                .custom()
-                .maxAttempts(3)
-                .waitDuration(Duration.ofSeconds(3))
-                .retryExceptions(RetryableException.class)
-                .build());
-        RetryDecoratorService retryDecoratorService = new RetryDecoratorService(retryRegistry);
-
-        // Instantiating MavenCentralClient bean
-        HttpClient httpClient = HttpClient
-                .newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL) // Always follow redirects, except from HTTPS URLs to HTTP URLs
-                .build();
-
-        List<MavenRepository> repositories = new ArrayList<>();
-        // For stable releases
-        repositories.add(new MavenRepository("https://repo1.maven.org/maven2", false));
-        // For snapshots
-        if(!DISABLE_SNAPSHOTS)
-            repositories.add(new MavenRepository("https://central.sonatype.com/repository/maven-snapshots", true));
-        MavenCentralClient mavenCentralClient = new MavenCentralClient(httpClient, repositories, retryDecoratorService);
-
-        // Instantiating MavenCentralService bean
-        MavenCentralService mavenCentralService = new MavenCentralService(executor, mavenCentralClient);
-
-        // Instantiating IndexHtmlGeneratingService bean
-        Configuration config = new Configuration(Configuration.VERSION_2_3_34);
-        config.setClassLoaderForTemplateLoading(LambdaHandler.class.getClassLoader(), "");
-        config.setDefaultEncoding("UTF-8");
-        Template template;
-        try {
-            template = config.getTemplate("package-index.ftl");
-        }
-        catch (Exception ex) {
-            throw new RuntimeException("Failed to load freemarker template: package-index.ftl", ex);
-        }
-        IndexHtmlGeneratingService indexHtmlGeneratingService = new IndexHtmlGeneratingService(executor, template);
-
-        // Instantiating CloudflareService bean
-        CloudflareService cloudflareService = new CloudflareService(CLOUDFLARE_API_TOKEN, CLOUDFLARE_PROJECT_NAME);
-
-        // Instantiating FilesystemService bean
-        FilesystemService filesystemService = new FilesystemService();
-
-        // Instantiating DeploymentService bean
-        DeploymentService deploymentService = new DeploymentService(
-                mavenCentralService,
-                indexHtmlGeneratingService,
-                cloudflareService,
-                filesystemService,
+        @Cleanup BeanFactory beanFactory = new BeanFactory(
+                DISABLE_SNAPSHOTS,
                 DISABLE_CLOUDFLARE_DEPLOYMENT,
-                DISABLE_TEMP_FILE_DELETION
+                DISABLE_TEMP_FILE_DELETION,
+                CLOUDFLARE_API_TOKEN,
+                CLOUDFLARE_PROJECT_NAME
         );
-
-        // Trigger the deployment process
+        DeploymentService deploymentService = beanFactory.getDeploymentService();
         deploymentService.deploy(lambdaInput.getPackages());
         return null;
     }
