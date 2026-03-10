@@ -110,7 +110,7 @@ public class BeanFactory implements AutoCloseable {
     public CloudflareService getCloudflareService() {
         return (CloudflareService) beans.computeIfAbsent(
                 "cloudflareService",
-                name -> new CloudflareService(CLOUDFLARE_API_TOKEN, CLOUDFLARE_PROJECT_NAME)
+                name -> new CloudflareService(getRetryDecoratorService(), CLOUDFLARE_API_TOKEN, CLOUDFLARE_PROJECT_NAME)
         );
     }
 

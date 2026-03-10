@@ -1,10 +1,12 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
+import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import lombok.Cleanup;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.text.MessageFormat;
 import java.util.Map;
@@ -13,10 +15,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CloudflareService {
 
+    private final RetryDecoratorService retryDecoratorService;
     private final String CLOUDFLARE_API_TOKEN;
     private final String CLOUDFLARE_PROJECT_NAME;
 
     public void deploy(String sitePath, String workingDirectory) {
+        retryDecoratorService.executeConsumerWithRetry("deploy", () -> deployImpl(sitePath, workingDirectory));
+    }
+
+    private void deployImpl(String sitePath, String workingDirectory) {
         try {
             log.info("Started deploying {} to Cloudflare Pages project {}", sitePath, CLOUDFLARE_PROJECT_NAME);
 
@@ -40,7 +47,7 @@ public class CloudflareService {
             if(exitCode != 0) {
                 @Cleanup InputStream errorStream = process.getErrorStream();
                 String errorOutput = new String(errorStream.readAllBytes());
-                throw new IllegalStateException(MessageFormat.format(
+                throw new RetryableException(MessageFormat.format(
                         "Wrangler CLI failed exited with code {0}. Error output: {1}",
                         exitCode, errorOutput
                 ));
@@ -51,6 +58,16 @@ public class CloudflareService {
             log.info("Wrangler CLI output: {}", output);
 
             log.info("Completed deploying {} to Cloudflare Pages project {}", sitePath, CLOUDFLARE_PROJECT_NAME);
+        }
+        catch (RetryableException ex) {
+            throw ex; // Rethrow retryable exceptions as is
+        }
+        catch (IOException | SecurityException ex) {
+            throw new RetryableException("Retryable exception occurred while deploying site to Cloudflare Pages project: " + CLOUDFLARE_PROJECT_NAME, ex);
+        }
+        catch (InterruptedException ex) {
+            Thread.currentThread().interrupt(); // Restore interrupted status
+            throw new RuntimeException("Thread was interrupted while deploying site to Cloudflare Pages project: " + CLOUDFLARE_PROJECT_NAME, ex);
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to deploy site to Cloudflare Pages project: " + CLOUDFLARE_PROJECT_NAME, ex);
