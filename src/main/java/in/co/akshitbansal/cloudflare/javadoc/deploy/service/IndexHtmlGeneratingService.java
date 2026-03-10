@@ -1,10 +1,11 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.VersionComparator;
 import lombok.Cleanup;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.BufferedWriter;
@@ -19,12 +20,18 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Stream;
 
-@RequiredArgsConstructor
+@Singleton
 @Slf4j
 public class IndexHtmlGeneratingService {
 
     private final ExecutorService executor;
     private final Template freemarkerTemplate;
+
+    @Inject
+    public IndexHtmlGeneratingService(ExecutorService executor, Template freemarkerTemplate) {
+        this.executor = executor;
+        this.freemarkerTemplate = freemarkerTemplate;
+    }
 
     public void generateIndexHtml(String startingPath, int maxDepth) {
         generateIndexHtml(startingPath, "/", maxDepth);

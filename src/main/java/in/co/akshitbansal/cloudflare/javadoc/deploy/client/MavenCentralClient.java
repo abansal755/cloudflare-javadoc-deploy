@@ -1,12 +1,13 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.client;
 
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.RetryDecoratorService;
 import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
@@ -24,13 +25,20 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 
+@Singleton
 @Slf4j
-@RequiredArgsConstructor
 public class MavenCentralClient {
 
     private final HttpClient httpClient;
     private final List<MavenRepository> repositories;
     private final RetryDecoratorService retryDecoratorService;
+
+    @Inject
+    public MavenCentralClient(HttpClient httpClient, List<MavenRepository> repositories, RetryDecoratorService retryDecoratorService) {
+        this.httpClient = httpClient;
+        this.repositories = repositories;
+        this.retryDecoratorService = retryDecoratorService;
+    }
 
     public List<MavenArtifact> getArtifacts(@NonNull MavenPackage mavenPackage) {
         return retryDecoratorService.executeSupplierWithRetry("getArtifacts", () -> getArtifactsImpl(mavenPackage));

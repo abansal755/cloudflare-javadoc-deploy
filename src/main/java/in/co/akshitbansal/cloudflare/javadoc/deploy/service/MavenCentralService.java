@@ -1,11 +1,12 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import lombok.Cleanup;
 import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
@@ -17,12 +18,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-@RequiredArgsConstructor
+@Singleton
 @Slf4j
 public class MavenCentralService {
 
     private final ExecutorService executor;
     private final MavenCentralClient mavenCentralClient;
+
+    @Inject
+    public MavenCentralService(ExecutorService executor, MavenCentralClient mavenCentralClient) {
+        this.executor = executor;
+        this.mavenCentralClient = mavenCentralClient;
+    }
 
     public List<MavenArtifact> getAllArtifacts(@NonNull List<MavenPackage> packages) {
         try {

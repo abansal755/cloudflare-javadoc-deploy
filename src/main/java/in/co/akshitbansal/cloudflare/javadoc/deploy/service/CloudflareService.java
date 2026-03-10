@@ -1,8 +1,10 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.config.Props;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import lombok.Cleanup;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -11,13 +13,20 @@ import java.io.InputStream;
 import java.text.MessageFormat;
 import java.util.Map;
 
+@Singleton
 @Slf4j
-@RequiredArgsConstructor
 public class CloudflareService {
 
     private final RetryDecoratorService retryDecoratorService;
     private final String CLOUDFLARE_API_TOKEN;
     private final String CLOUDFLARE_PROJECT_NAME;
+
+    @Inject
+    public CloudflareService(RetryDecoratorService retryDecoratorService, Props props) {
+        this.retryDecoratorService = retryDecoratorService;
+        this.CLOUDFLARE_API_TOKEN = props.CLOUDFLARE_API_TOKEN;
+        this.CLOUDFLARE_PROJECT_NAME = props.CLOUDFLARE_PROJECT_NAME;
+    }
 
     public void deploy(String sitePath, String workingDirectory) {
         retryDecoratorService.executeConsumerWithRetry("deploy", () -> deployImpl(sitePath, workingDirectory));

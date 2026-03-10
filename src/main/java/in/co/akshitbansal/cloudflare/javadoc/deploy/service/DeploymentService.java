@@ -1,16 +1,18 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.config.Props;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-@RequiredArgsConstructor
+@Singleton
 @Slf4j
 public class DeploymentService {
 
@@ -21,6 +23,22 @@ public class DeploymentService {
 
     private final boolean DISABLE_CLOUDFLARE_DEPLOYMENT;
     private final boolean DISABLE_TEMP_FILE_DELETION;
+
+    @Inject
+    public DeploymentService(
+            MavenCentralService mavenCentralService,
+            IndexHtmlGeneratingService indexHtmlGeneratingService,
+            CloudflareService cloudflareService,
+            FilesystemService filesystemService,
+            Props props
+    ) {
+        this.mavenCentralService = mavenCentralService;
+        this.indexHtmlGeneratingService = indexHtmlGeneratingService;
+        this.cloudflareService = cloudflareService;
+        this.filesystemService = filesystemService;
+        this.DISABLE_CLOUDFLARE_DEPLOYMENT = props.DISABLE_CLOUDFLARE_DEPLOYMENT;
+        this.DISABLE_TEMP_FILE_DELETION = props.DISABLE_TEMP_FILE_DELETION;
+    }
 
     public void deploy(@NonNull List<MavenPackage> packages) {
         try {
