@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 @Singleton
 @Slf4j
@@ -40,11 +41,11 @@ public class DeploymentService {
         this.DISABLE_TEMP_FILE_DELETION = props.DISABLE_TEMP_FILE_DELETION;
     }
 
-    public void deploy(@NonNull List<MavenPackage> packages) {
+    public void deploy(@NonNull List<MavenPackage> packages, ExecutorService executor) {
         try {
             // Fetch all artifacts for the given packages from Maven Central
             log.info("Found packages to scan: {}", packages);
-            List<MavenArtifact> artifacts = mavenCentralService.getAllArtifacts(packages);
+            List<MavenArtifact> artifacts = mavenCentralService.getAllArtifacts(packages, executor);
 
             // Create a temporary directory to prepare the javadoc site bundle
             Path tempDir = Files.createTempDirectory("cloudflare-javadoc");
@@ -52,10 +53,10 @@ public class DeploymentService {
             log.info("Created temporary directory for javadoc site bundle: {}", siteDir);
 
             // Prepare the javadoc bundles for all artifacts in the temporary directory
-            mavenCentralService.prepareJavadocBundles(siteDir, artifacts);
+            mavenCentralService.prepareJavadocBundles(siteDir, artifacts, executor);
 
             // Generate index.html for the javadoc site
-            indexHtmlGeneratingService.generateIndexHtml(siteDir, 3);
+            indexHtmlGeneratingService.generateIndexHtml(siteDir, 3, executor);
 
             // Deploy the generated javadoc site to Cloudflare Pages
             if(DISABLE_CLOUDFLARE_DEPLOYMENT) log.warn("Cloudflare deployment is disabled. Skipping deployment step.");

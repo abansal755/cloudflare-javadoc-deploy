@@ -6,7 +6,6 @@ import com.google.inject.Singleton;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.MDCExecutorService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import io.github.resilience4j.retry.RetryConfig;
@@ -18,8 +17,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @RequiredArgsConstructor
 public class AppModule extends AbstractModule {
@@ -62,12 +59,6 @@ public class AppModule extends AbstractModule {
         if(!props.DISABLE_SNAPSHOTS)
             repositories.add(new MavenRepository("https://central.sonatype.com/repository/maven-snapshots", true));
         return Collections.unmodifiableList(repositories);
-    }
-
-    @Provides
-    @Singleton
-    ExecutorService provideExecutorService() {
-        return new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());
     }
 
     @Provides

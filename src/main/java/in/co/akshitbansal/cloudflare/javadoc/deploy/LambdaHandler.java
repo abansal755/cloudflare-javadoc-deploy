@@ -4,19 +4,19 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
+import com.google.inject.Stage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.config.AppModule;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.config.Props;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
 import lombok.Cleanup;
-import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-@Slf4j
 public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
 
     @Override
@@ -31,12 +31,13 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         MDC.put("awsRequestId", context.getAwsRequestId());
 
         // Create Guice injector with the application module and the properties
-        Injector injector = Guice.createInjector(new AppModule(props));
-        // Get the ExecutorService instance from Guice and ensure it gets properly shut down after the request is processed
-        @Cleanup ExecutorService executorService = injector.getInstance(ExecutorService.class);
+        Injector injector = Guice.createInjector(Stage.PRODUCTION, new AppModule(props));
+
+        // Instantiating thread pool with virtual threads
+        @Cleanup ExecutorService executorService = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());;
 
         DeploymentService deploymentService = injector.getInstance(DeploymentService.class);
-        deploymentService.deploy(lambdaInput.getPackages());
+        deploymentService.deploy(lambdaInput.getPackages(), executorService);
         return null;
     }
 

@@ -22,16 +22,14 @@ import java.util.zip.ZipInputStream;
 @Slf4j
 public class MavenCentralService {
 
-    private final ExecutorService executor;
     private final MavenCentralClient mavenCentralClient;
 
     @Inject
-    public MavenCentralService(ExecutorService executor, MavenCentralClient mavenCentralClient) {
-        this.executor = executor;
+    public MavenCentralService(MavenCentralClient mavenCentralClient) {
         this.mavenCentralClient = mavenCentralClient;
     }
 
-    public List<MavenArtifact> getAllArtifacts(@NonNull List<MavenPackage> packages) {
+    public List<MavenArtifact> getAllArtifacts(@NonNull List<MavenPackage> packages, ExecutorService executor) {
         try {
             log.info("Started fetching artifact versions from Maven Central");
             List<CompletableFuture<List<MavenArtifact>>> futures = packages
@@ -57,7 +55,7 @@ public class MavenCentralService {
         }
     }
 
-    public void prepareJavadocBundles(@NonNull String sitePath, @NonNull List<MavenArtifact> artifacts) {
+    public void prepareJavadocBundles(@NonNull String sitePath, @NonNull List<MavenArtifact> artifacts, ExecutorService executor) {
         try {
             log.info("Started preparing javadoc site bundles for artifacts");
             List<CompletableFuture<Void>> futures = artifacts

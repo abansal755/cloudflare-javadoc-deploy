@@ -24,20 +24,18 @@ import java.util.stream.Stream;
 @Slf4j
 public class IndexHtmlGeneratingService {
 
-    private final ExecutorService executor;
     private final Template freemarkerTemplate;
 
     @Inject
-    public IndexHtmlGeneratingService(ExecutorService executor, Template freemarkerTemplate) {
-        this.executor = executor;
+    public IndexHtmlGeneratingService(Template freemarkerTemplate) {
         this.freemarkerTemplate = freemarkerTemplate;
     }
 
-    public void generateIndexHtml(String startingPath, int maxDepth) {
-        generateIndexHtml(startingPath, "/", maxDepth);
+    public void generateIndexHtml(String startingPath, int maxDepth, ExecutorService executor) {
+        generateIndexHtml(startingPath, "/", maxDepth, executor);
     }
 
-    private void generateIndexHtml(String currentPath, String relativePath, int depth) {
+    private void generateIndexHtml(String currentPath, String relativePath, int depth, ExecutorService executor) {
         if(depth <= 0) return; // Base case: stop recursion when depth limit is reached
         try {
             log.info("Started recursively generating index.html for subdirectories of path: {}", currentPath);
@@ -58,7 +56,8 @@ public class IndexHtmlGeneratingService {
                             () -> generateIndexHtml(
                                     path.resolve(dir).toString(),
                                     relativePath + dir + "/",
-                                    depth - 1
+                                    depth - 1,
+                                    executor
                             ),
                             executor
                     ))
