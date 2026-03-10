@@ -1,8 +1,10 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.client;
 
+import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.RetryDecoratorService;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +14,7 @@ import org.w3c.dom.NodeList;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathFactory;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -27,8 +30,17 @@ public class MavenCentralClient {
 
     private final HttpClient httpClient;
     private final List<MavenRepository> repositories;
+    private final RetryDecoratorService retryDecoratorService;
 
     public List<MavenArtifact> getArtifacts(@NonNull MavenPackage mavenPackage) {
+        return retryDecoratorService.executeSupplierWithRetry("getArtifacts", () -> getArtifactsImpl(mavenPackage));
+    }
+
+    public InputStream getJavadocJarInputStream(@NonNull MavenArtifact mavenArtifact) {
+        return retryDecoratorService.executeSupplierWithRetry("getJavadocJarInputStream", () -> getJavadocJarInputStreamImpl(mavenArtifact));
+    }
+
+    private List<MavenArtifact> getArtifactsImpl(@NonNull MavenPackage mavenPackage) {
         try {
             List<String> versions = new ArrayList<>();
             for(MavenRepository repository: repositories) {
@@ -49,12 +61,15 @@ public class MavenCentralClient {
                     .map(version -> new MavenArtifact(mavenPackage.getGroupId(), mavenPackage.getArtifactId(), version))
                     .toList();
         }
+        catch (IOException ex) {
+            throw new RetryableException("Recoverable exception occurred while trying to fetch artifact versions for package: " + mavenPackage, ex);
+        }
         catch (Exception ex) {
             throw new RuntimeException("Failed to fetch versions for artifact: " + mavenPackage, ex);
         }
     }
 
-    public InputStream getJavadocJarInputStream(@NonNull MavenArtifact mavenArtifact) {
+    private InputStream getJavadocJarInputStreamImpl(@NonNull MavenArtifact mavenArtifact) {
         try {
             for(MavenRepository repository: repositories) {
                 URI uri = getJavadocArtifactURI(repository, mavenArtifact);
@@ -63,32 +78,50 @@ public class MavenCentralClient {
                         .newBuilder()
                         .uri(uri)
                         .build();
-                HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                HttpResponse<InputStream> response;
+                try {
+                    response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                }
+                catch (IOException | SecurityException ex) {
+                    throw new RetryableException(MessageFormat.format(
+                            "Recoverable exception occurred while trying to fetch javadoc jar for artifact {0} from repository {1}",
+                            mavenArtifact, repository
+                    ), ex);
+                }
+                catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt(); // Restore interrupted status
+                    throw new RuntimeException(MessageFormat.format(
+                            "Thread was interrupted while trying to fetch javadoc jar for artifact {0} from repository {1}",
+                            mavenArtifact, repository
+                    ), ex);
+                }
                 int statusCode = response.statusCode();
                 InputStream bodyStream = response.body();
                 if(statusCode >= 200 && statusCode < 300) {
                     log.info("Found javadoc jar for artifact {} in repository {}", mavenArtifact, repository);
                     return bodyStream; // caller is responsible for closing the stream after consuming it
                 }
-                if(statusCode >= 400 && statusCode < 600) {
-                    if(statusCode == 404) {
-                        log.warn("Javadoc jar for artifact {} not found in repository {}", mavenArtifact, repository);
-                        bodyStream.close();
-                    }
-                    else {
-                        String errorOutput = new String(bodyStream.readAllBytes());
-                        bodyStream.close();
-                        throw new IllegalStateException(MessageFormat.format(
-                                "Failed to fetch javadoc jar for artifact {0} from repository {1}. HTTP status code: {2}. Error output: {3}",
-                                mavenArtifact, repository, statusCode, errorOutput
-                        ));
-                    }
+                if(statusCode == 404) {
+                    log.warn("Javadoc jar for artifact {} not found in repository {}", mavenArtifact, repository);
+                    bodyStream.close();
+                    continue;
                 }
+                String errorOutput = new String(bodyStream.readAllBytes());
+                bodyStream.close();
+                String message = MessageFormat.format(
+                        "Failed to fetch javadoc jar for artifact {0} from repository {1}. HTTP status code: {2}. Error output: {3}",
+                        mavenArtifact, repository, statusCode, errorOutput
+                );
+                if(statusCode == 429 || statusCode == 408 || statusCode >= 500) throw new RetryableException(message);
+                throw new IllegalStateException(message);
             }
             throw new IllegalStateException(MessageFormat.format(
                     "Unable to locate javadoc jar for artifact {0}",
                     mavenArtifact
             ));
+        }
+        catch (RetryableException ex) {
+            throw ex;
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to download artifact: " + mavenArtifact, ex);
@@ -119,7 +152,7 @@ public class MavenCentralClient {
         );
     }
 
-    private String getSnapshotJavadocPath(MavenArtifact mavenArtifact, MavenRepository repository) {
+    private String getSnapshotJavadocPath(@NonNull MavenArtifact mavenArtifact, @NonNull MavenRepository repository) {
         try {
             Document document = DocumentBuilderFactory
                     .newInstance()
@@ -136,6 +169,9 @@ public class MavenCentralClient {
                     mavenArtifact.getArtifactId(),
                     value
             );
+        }
+        catch (IOException ex) {
+            throw new RetryableException("Recoverable exception occurred while trying to fetch snapshot metadata for artifact: " + mavenArtifact, ex);
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to fetch javadoc snapshot jar path for artifact: " + mavenArtifact, ex);

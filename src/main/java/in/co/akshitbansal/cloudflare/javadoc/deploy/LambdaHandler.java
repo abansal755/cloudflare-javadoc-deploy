@@ -5,17 +5,22 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.*;
+import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.retry.RetryRegistry;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
 import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -46,6 +51,15 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         // Instantiating virtual thread pool
         @Cleanup ExecutorService executor = new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());
 
+        // Instantiation RetryDecoratorService
+        RetryRegistry retryRegistry = RetryRegistry.of(RetryConfig
+                .custom()
+                .maxAttempts(3)
+                .waitDuration(Duration.ofSeconds(3))
+                .retryExceptions(RetryableException.class)
+                .build());
+        RetryDecoratorService retryDecoratorService = new RetryDecoratorService(retryRegistry);
+
         // Instantiating MavenCentralClient bean
         HttpClient httpClient = HttpClient
                 .newBuilder()
@@ -58,7 +72,7 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         // For snapshots
         if(!DISABLE_SNAPSHOTS)
             repositories.add(new MavenRepository("https://central.sonatype.com/repository/maven-snapshots", true));
-        MavenCentralClient mavenCentralClient = new MavenCentralClient(httpClient, repositories);
+        MavenCentralClient mavenCentralClient = new MavenCentralClient(httpClient, repositories, retryDecoratorService);
 
         // Instantiating MavenCentralService bean
         MavenCentralService mavenCentralService = new MavenCentralService(executor, mavenCentralClient);
