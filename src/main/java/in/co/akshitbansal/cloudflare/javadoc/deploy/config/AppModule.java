@@ -6,14 +6,10 @@ import com.google.inject.Singleton;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
-import io.github.resilience4j.retry.RetryConfig;
-import io.github.resilience4j.retry.RetryRegistry;
 
 import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -49,18 +45,6 @@ public class AppModule extends AbstractModule {
                 DISABLE_TEMP_FILE_DELETION,
                 CLOUDFLARE_API_TOKEN,
                 CLOUDFLARE_PROJECT_NAME
-        );
-    }
-
-    @Provides
-    @Singleton
-    RetryRegistry provideRetryRegistry() {
-        return RetryRegistry.of(RetryConfig
-                .custom()
-                .maxAttempts(3)
-                .waitDuration(Duration.ofSeconds(3))
-                .retryExceptions(RetryableException.class)
-                .build()
         );
     }
 

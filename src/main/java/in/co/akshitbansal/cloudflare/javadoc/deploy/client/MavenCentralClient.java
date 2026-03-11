@@ -2,11 +2,11 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.client;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.service.RetryDecoratorService;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.w3c.dom.Document;
@@ -31,24 +31,15 @@ public class MavenCentralClient {
 
     private final HttpClient httpClient;
     private final List<MavenRepository> repositories;
-    private final RetryDecoratorService retryDecoratorService;
 
     @Inject
-    public MavenCentralClient(HttpClient httpClient, List<MavenRepository> repositories, RetryDecoratorService retryDecoratorService) {
+    public MavenCentralClient(HttpClient httpClient, List<MavenRepository> repositories) {
         this.httpClient = httpClient;
         this.repositories = repositories;
-        this.retryDecoratorService = retryDecoratorService;
     }
 
+    @Retry
     public List<MavenArtifact> getArtifacts(@NonNull MavenPackage mavenPackage) {
-        return retryDecoratorService.executeSupplierWithRetry("getArtifacts", () -> getArtifactsImpl(mavenPackage));
-    }
-
-    public InputStream getJavadocJarInputStream(@NonNull MavenArtifact mavenArtifact) {
-        return retryDecoratorService.executeSupplierWithRetry("getJavadocJarInputStream", () -> getJavadocJarInputStreamImpl(mavenArtifact));
-    }
-
-    private List<MavenArtifact> getArtifactsImpl(@NonNull MavenPackage mavenPackage) {
         try {
             List<String> versions = new ArrayList<>();
             for(MavenRepository repository: repositories) {
@@ -77,7 +68,8 @@ public class MavenCentralClient {
         }
     }
 
-    private InputStream getJavadocJarInputStreamImpl(@NonNull MavenArtifact mavenArtifact) {
+    @Retry
+    public InputStream getJavadocJarInputStream(@NonNull MavenArtifact mavenArtifact) {
         try {
             for(MavenRepository repository: repositories) {
                 URI uri = getJavadocArtifactURI(repository, mavenArtifact);
