@@ -21,9 +21,11 @@ public class DeploymentService {
     private final IndexHtmlGeneratingService indexHtmlGeneratingService;
     private final CloudflareService cloudflareService;
     private final FilesystemService filesystemService;
+    private final AwsSesEmailService awsSesEmailService;
 
     private final boolean DISABLE_CLOUDFLARE_DEPLOYMENT;
     private final boolean DISABLE_TEMP_FILE_DELETION;
+    private final boolean DISABLE_STATUS_EMAIL;
 
     @Inject
     public DeploymentService(
@@ -31,17 +33,23 @@ public class DeploymentService {
             IndexHtmlGeneratingService indexHtmlGeneratingService,
             CloudflareService cloudflareService,
             FilesystemService filesystemService,
+            AwsSesEmailService awsSesEmailService,
             Props props
     ) {
         this.mavenCentralService = mavenCentralService;
         this.indexHtmlGeneratingService = indexHtmlGeneratingService;
         this.cloudflareService = cloudflareService;
         this.filesystemService = filesystemService;
+        this.awsSesEmailService = awsSesEmailService;
         this.DISABLE_CLOUDFLARE_DEPLOYMENT = props.DISABLE_CLOUDFLARE_DEPLOYMENT;
         this.DISABLE_TEMP_FILE_DELETION = props.DISABLE_TEMP_FILE_DELETION;
+        this.DISABLE_STATUS_EMAIL = props.DISABLE_STATUS_EMAIL;
     }
 
-    public void deploy(@NonNull List<MavenPackage> packages, ExecutorService executor) {
+    public void deploy(@NonNull List<MavenPackage> packages, String awsRequestId, ExecutorService executor) {
+        boolean deploymentSuccess = true;
+        String errorMessage = null;
+
         try {
             // Fetch all artifacts for the given packages from Maven Central
             log.info("Found packages to scan: {}", packages);
@@ -67,7 +75,14 @@ public class DeploymentService {
             else filesystemService.deleteDirectoryRecursively(tempDir.toString());
         }
         catch (Exception ex) {
+            deploymentSuccess = false;
+            errorMessage = ex.getMessage();
             throw new RuntimeException("Failed to deploy javadoc site to Cloudflare Pages", ex);
+        }
+        finally {
+            // Send deployment status email
+            if(DISABLE_STATUS_EMAIL) log.warn("Status email sending is disabled. Skipping sending deployment status email.");
+            else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, errorMessage, packages, awsRequestId);
         }
     }
 }

@@ -5,6 +5,7 @@ import com.google.inject.Singleton;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.VersionComparator;
+import jakarta.inject.Named;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,7 +28,7 @@ public class IndexHtmlGeneratingService {
     private final Template freemarkerTemplate;
 
     @Inject
-    public IndexHtmlGeneratingService(Template freemarkerTemplate) {
+    public IndexHtmlGeneratingService(@Named("indexHtmlTemplate") Template freemarkerTemplate) {
         this.freemarkerTemplate = freemarkerTemplate;
     }
 
