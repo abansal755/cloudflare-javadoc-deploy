@@ -11,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 
 @Singleton
 @Slf4j
@@ -46,14 +45,14 @@ public class DeploymentService {
         this.DISABLE_STATUS_EMAIL = props.DISABLE_STATUS_EMAIL;
     }
 
-    public void deploy(@NonNull List<MavenPackage> packages, String awsRequestId, ExecutorService executor) {
+    public void deploy(@NonNull List<MavenPackage> packages, String awsRequestId) {
         boolean deploymentSuccess = true;
         String errorMessage = null;
 
         try {
             // Fetch all artifacts for the given packages from Maven Central
             log.info("Found packages to scan: {}", packages);
-            List<MavenArtifact> artifacts = mavenCentralService.getAllArtifacts(packages, executor);
+            List<MavenArtifact> artifacts = mavenCentralService.getAllArtifacts(packages);
 
             // Create a temporary directory to prepare the javadoc site bundle
             Path tempDir = Files.createTempDirectory("cloudflare-javadoc");
@@ -61,10 +60,10 @@ public class DeploymentService {
             log.info("Created temporary directory for javadoc site bundle: {}", siteDir);
 
             // Prepare the javadoc bundles for all artifacts in the temporary directory
-            mavenCentralService.prepareJavadocBundles(siteDir, artifacts, executor);
+            mavenCentralService.prepareJavadocBundles(siteDir, artifacts);
 
             // Generate index.html for the javadoc site
-            indexHtmlGeneratingService.generateIndexHtml(siteDir, 3, executor);
+            indexHtmlGeneratingService.generateIndexHtml(siteDir, 3);
 
             // Deploy the generated javadoc site to Cloudflare Pages
             if(DISABLE_CLOUDFLARE_DEPLOYMENT) log.warn("Cloudflare deployment is disabled. Skipping deployment step.");

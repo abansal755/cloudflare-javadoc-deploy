@@ -26,17 +26,19 @@ import java.util.stream.Stream;
 public class IndexHtmlGeneratingService {
 
     private final Template freemarkerTemplate;
+    private final ExecutorService executor;
 
     @Inject
-    public IndexHtmlGeneratingService(@Named("indexHtmlTemplate") Template freemarkerTemplate) {
+    public IndexHtmlGeneratingService(@Named("indexHtmlTemplate") Template freemarkerTemplate, ExecutorService executor) {
         this.freemarkerTemplate = freemarkerTemplate;
+        this.executor = executor;
     }
 
-    public void generateIndexHtml(String startingPath, int maxDepth, ExecutorService executor) {
-        generateIndexHtml(startingPath, "/", maxDepth, executor);
+    public void generateIndexHtml(String startingPath, int maxDepth) {
+        generateIndexHtml(startingPath, "/", maxDepth);
     }
 
-    private void generateIndexHtml(String currentPath, String relativePath, int depth, ExecutorService executor) {
+    private void generateIndexHtml(String currentPath, String relativePath, int depth) {
         if(depth <= 0) return; // Base case: stop recursion when depth limit is reached
         try {
             log.info("Started recursively generating index.html for subdirectories of path: {}", currentPath);
@@ -57,8 +59,7 @@ public class IndexHtmlGeneratingService {
                             () -> generateIndexHtml(
                                     path.resolve(dir).toString(),
                                     relativePath + dir + "/",
-                                    depth - 1,
-                                    executor
+                                    depth - 1
                             ),
                             executor
                     ))
