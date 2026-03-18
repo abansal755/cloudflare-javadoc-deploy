@@ -19,3 +19,18 @@ Optional flags (all default to `false`):
 - `DISABLE_CLOUDFLARE_DEPLOYMENT`
 - `DISABLE_TEMP_FILE_DELETION`
 - `DISABLE_STATUS_EMAIL`
+
+## Local Testing
+The Makefile is intended for local testing (builds the image and runs the Lambda container locally).
+You can override Makefile variables by creating a `secrets.mk` file, which the Makefile already includes optionally.
+
+Example `secrets.mk`:
+```make
+CLOUDFLARE_API_TOKEN = your-token
+CLOUDFLARE_PROJECT_NAME = your-project
+AWS_ACCESS_KEY_ID = your-access-key
+AWS_SECRET_ACCESS_KEY = your-secret-key
+STATUS_EMAIL_RECIPIENT = you@example.com
+STATUS_EMAIL_SENDER = bot@example.com
+SITE_URL = https://example.com
+```
