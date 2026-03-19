@@ -11,10 +11,7 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
 import jakarta.inject.Named;
 import lombok.Cleanup;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ses.SesClient;
 
@@ -94,13 +91,26 @@ public class AppModule extends AbstractModule {
 
     @Provides
     @Singleton
+    List<String> provideActiveProfiles(@Named("profile.active") String PROFILES) {
+        return List.of(PROFILES.split(","));
+    }
+
+    @Provides
+    @Singleton
     AwsCredentialsProvider provideAwsCredentialsProvider(
             @Named("aws.access-key-id") String AWS_ACCESS_KEY_ID,
-            @Named("aws.secret-access-key") String AWS_SECRET_ACCESS_KEY
+            @Named("aws.secret-access-key") String AWS_SECRET_ACCESS_KEY,
+            List<String> activeProfiles
     ) {
-        return AwsCredentialsProviderChain.of(
-                StaticCredentialsProvider.create(AwsBasicCredentials.create(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY))
-        );
+        for(String profile: activeProfiles) {
+            if(profile.equals("local")) return AwsCredentialsProviderChain.of(
+                    StaticCredentialsProvider.create(AwsBasicCredentials.create(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY))
+            );
+            if(profile.equals("production")) return AwsCredentialsProviderChain.of(
+                    DefaultCredentialsProvider.builder().build()
+            );
+        }
+        throw new RuntimeException("No valid active profile found for AWS credentials provider configuration. Active profiles: " + activeProfiles);
     }
 
     @Provides
