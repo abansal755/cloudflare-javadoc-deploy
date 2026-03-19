@@ -3,14 +3,18 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.client;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.enums.DeploymentStatus;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.DeploymentStatusRes;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
+import jakarta.inject.Named;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
+import tools.jackson.databind.ObjectMapper;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPath;
@@ -23,6 +27,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 
 @Singleton
@@ -30,12 +35,31 @@ import java.util.List;
 public class MavenCentralClient {
 
     private final HttpClient httpClient;
+    private final ObjectMapper objectMapper;
     private final List<MavenRepository> repositories;
 
+    private final String BASE_URL;
+    private final String GET_DEPLOYMENT_STATUS_ENDPOINT;
+    private final String USERNAME;
+    private final String PASSWORD;
+
     @Inject
-    public MavenCentralClient(HttpClient httpClient, List<MavenRepository> repositories) {
+    public MavenCentralClient(
+            HttpClient httpClient,
+            ObjectMapper objectMapper,
+            List<MavenRepository> repositories,
+            @Named("maven-central.base-url") String BASE_URL,
+            @Named("maven-central.get-deployment-status-endpoint") String GET_DEPLOYMENT_STATUS_ENDPOINT,
+            @Named("maven-central.username") String USERNAME,
+            @Named("maven-central.password") String PASSWORD
+    ) {
         this.httpClient = httpClient;
+        this.objectMapper = objectMapper;
         this.repositories = repositories;
+        this.BASE_URL = BASE_URL;
+        this.GET_DEPLOYMENT_STATUS_ENDPOINT = GET_DEPLOYMENT_STATUS_ENDPOINT;
+        this.USERNAME = USERNAME;
+        this.PASSWORD = PASSWORD;
     }
 
     @Retry
@@ -128,6 +152,55 @@ public class MavenCentralClient {
         }
     }
 
+    @Retry
+    public DeploymentStatus getDeploymentStatus(@NonNull String deploymentId) {
+        try {
+            URI uri = URI.create(BASE_URL + GET_DEPLOYMENT_STATUS_ENDPOINT + "?id=" + deploymentId);
+            log.info("POST {}", uri);
+            HttpRequest request = HttpRequest
+                    .newBuilder()
+                    .uri(uri)
+                    .header("Authorization", "Bearer " + getBearerToken(USERNAME, PASSWORD))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+
+            HttpResponse<String> response;
+            try {
+                response= httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            }
+            catch (IOException ex) {
+                throw new RetryableException("Recoverable exception occurred while trying to fetch deployment status for deployment ID: " + deploymentId, ex);
+            }
+            catch (InterruptedException ex) {
+                Thread.currentThread().interrupt(); // Restore interrupted status
+                throw new RuntimeException("Thread was interrupted while trying to fetch deployment status for deployment ID: " + deploymentId, ex);
+            }
+            int statusCode = response.statusCode();
+            if(statusCode == 429 || statusCode == 408 || statusCode >= 500) {
+                throw new RetryableException(MessageFormat.format(
+                        "Received HTTP status code {0} while trying to fetch deployment status for deployment ID: {1}",
+                        statusCode, deploymentId
+                ));
+            }
+            if(statusCode >= 400) {
+                throw new IllegalStateException(MessageFormat.format(
+                        "Failed to fetch deployment status for deployment ID: {0}. HTTP status code: {1}",
+                        deploymentId, statusCode
+                ));
+            }
+            DeploymentStatusRes deploymentStatusRes = objectMapper.readValue(response.body(), DeploymentStatusRes.class);
+            DeploymentStatus status = deploymentStatusRes.getDeploymentState();
+            log.info("Fetched deployment status for deployment ID {}: {}", deploymentId, status);
+            return status;
+        }
+        catch (RetryableException ex) {
+            throw ex;
+        }
+        catch (Exception ex) {
+            throw new RuntimeException("Failed to fetch deployment status for deployment ID: " + deploymentId, ex);
+        }
+    }
+
     private String getMetadataPath(MavenPackage mavenPackage) {
         return String.format(
                 "/%s/%s/maven-metadata.xml",
@@ -185,5 +258,11 @@ public class MavenCentralClient {
                 mavenArtifact.getArtifactId(),
                 mavenArtifact.getVersion()
         );
+    }
+
+    private String getBearerToken(@NonNull String username, @NonNull String password) {
+        Base64.Encoder encoder = Base64.getEncoder();
+        String val = username + ":" + password;
+        return encoder.encodeToString(val.getBytes());
     }
 }

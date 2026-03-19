@@ -13,7 +13,9 @@ import jakarta.inject.Named;
 import lombok.Cleanup;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.scheduler.SchedulerClient;
 import software.amazon.awssdk.services.ses.SesClient;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -121,6 +123,22 @@ public class AppModule extends AbstractModule {
                 .region(Region.AP_SOUTH_2)
                 .credentialsProvider(awsCredentialsProvider)
                 .build();
+    }
+
+    @Provides
+    @Singleton
+    SchedulerClient provideSchedulerClient(AwsCredentialsProvider awsCredentialsProvider) {
+        return SchedulerClient
+                .builder()
+                .region(Region.AP_SOUTH_2)
+                .credentialsProvider(awsCredentialsProvider)
+                .build();
+    }
+
+    @Provides
+    @Singleton
+    ObjectMapper provideObjectMapper() {
+        return new ObjectMapper();
     }
 
     private Properties loadProperties() {
