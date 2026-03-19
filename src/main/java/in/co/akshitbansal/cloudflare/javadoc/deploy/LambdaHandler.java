@@ -48,6 +48,6 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         if(input == null)
             throw new IllegalArgumentException("Input cannot be null");
         if(input.getDeploymentIds() == null)
-            throw new IllegalArgumentException("Deployment IDs cannot be null or empty");
+            throw new IllegalArgumentException("Deployment IDs cannot be null");
     }
 }
