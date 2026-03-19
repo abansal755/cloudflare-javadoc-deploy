@@ -2,14 +2,14 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.config.Props;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
-import lombok.NonNull;
+import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 
 @Singleton
@@ -26,6 +26,8 @@ public class DeploymentService {
     private final boolean DISABLE_TEMP_FILE_DELETION;
     private final boolean DISABLE_STATUS_EMAIL;
 
+    private final List<MavenPackage> packages;
+
     @Inject
     public DeploymentService(
             MavenCentralService mavenCentralService,
@@ -33,19 +35,27 @@ public class DeploymentService {
             CloudflareService cloudflareService,
             FilesystemService filesystemService,
             AwsSesEmailService awsSesEmailService,
-            Props props
+            @Named("stage.cloudflare-deployment.disabled") String DISABLE_CLOUDFLARE_DEPLOYMENT,
+            @Named("stage.temp-file-deletion.disabled") String DISABLE_TEMP_FILE_DELETION,
+            @Named("stage.status-email.disabled") String DISABLE_STATUS_EMAIL,
+            @Named("package.include") String packagesStr
     ) {
         this.mavenCentralService = mavenCentralService;
         this.indexHtmlGeneratingService = indexHtmlGeneratingService;
         this.cloudflareService = cloudflareService;
         this.filesystemService = filesystemService;
         this.awsSesEmailService = awsSesEmailService;
-        this.DISABLE_CLOUDFLARE_DEPLOYMENT = props.DISABLE_CLOUDFLARE_DEPLOYMENT;
-        this.DISABLE_TEMP_FILE_DELETION = props.DISABLE_TEMP_FILE_DELETION;
-        this.DISABLE_STATUS_EMAIL = props.DISABLE_STATUS_EMAIL;
+        this.DISABLE_CLOUDFLARE_DEPLOYMENT = Boolean.parseBoolean(DISABLE_CLOUDFLARE_DEPLOYMENT);
+        this.DISABLE_TEMP_FILE_DELETION = Boolean.parseBoolean(DISABLE_TEMP_FILE_DELETION);
+        this.DISABLE_STATUS_EMAIL = Boolean.parseBoolean(DISABLE_STATUS_EMAIL);
+
+        this.packages = Arrays
+                .stream(packagesStr.split(","))
+                .map(this::parsePackage)
+                .toList();
     }
 
-    public void deploy(@NonNull List<MavenPackage> packages, String awsRequestId) {
+    public void deploy(String awsRequestId) {
         boolean deploymentSuccess = true;
         String errorMessage = null;
 
@@ -83,5 +93,13 @@ public class DeploymentService {
             if(DISABLE_STATUS_EMAIL) log.warn("Status email sending is disabled. Skipping sending deployment status email.");
             else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, errorMessage, packages, awsRequestId);
         }
+    }
+
+    private MavenPackage parsePackage(String str) {
+        String[] parts = str.split(":");
+        if(parts.length != 2) {
+            throw new IllegalArgumentException("Invalid package format: " + str + ". Expected format: groupId:artifactId");
+        }
+        return new MavenPackage(parts[0], parts[1]);
     }
 }

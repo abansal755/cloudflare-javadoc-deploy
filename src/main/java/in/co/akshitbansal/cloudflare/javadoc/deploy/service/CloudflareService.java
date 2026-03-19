@@ -3,8 +3,8 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.config.Props;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
+import jakarta.inject.Named;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,9 +22,12 @@ public class CloudflareService {
     private final String CLOUDFLARE_PROJECT_NAME;
 
     @Inject
-    public CloudflareService(Props props) {
-        this.CLOUDFLARE_API_TOKEN = props.CLOUDFLARE_API_TOKEN;
-        this.CLOUDFLARE_PROJECT_NAME = props.CLOUDFLARE_PROJECT_NAME;
+    public CloudflareService(
+            @Named("stage.cloudflare-deployment.api-token") String CLOUDFLARE_API_TOKEN,
+            @Named("stage.cloudflare-deployment.project-name") String CLOUDFLARE_PROJECT_NAME
+    ) {
+        this.CLOUDFLARE_API_TOKEN = CLOUDFLARE_API_TOKEN;
+        this.CLOUDFLARE_PROJECT_NAME = CLOUDFLARE_PROJECT_NAME;
     }
 
     @Retry

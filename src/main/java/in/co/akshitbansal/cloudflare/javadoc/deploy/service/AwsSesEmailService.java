@@ -4,7 +4,6 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.config.Props;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import jakarta.inject.Named;
 import lombok.NonNull;
@@ -24,17 +23,24 @@ public class AwsSesEmailService {
 
     private final SesClient sesClient;
     private final Template freemarkerTemplate;
+
     private final String STATUS_EMAIL_RECIPIENT;
     private final String STATUS_EMAIL_SENDER;
     private final String SITE_URL;
 
     @Inject
-    public AwsSesEmailService(SesClient sesClient, @Named("statusEmailTemplate") Template freemarkerTemplate, Props props) {
+    public AwsSesEmailService(
+            SesClient sesClient,
+            @Named("statusEmailTemplate") Template freemarkerTemplate,
+            @Named("stage.status-email.recipient") String STATUS_EMAIL_RECIPIENT,
+            @Named("stage.status-email.sender") String STATUS_EMAIL_SENDER,
+            @Named("stage.status-email.site-url") String SITE_URL
+    ) {
         this.sesClient = sesClient;
         this.freemarkerTemplate = freemarkerTemplate;
-        this.STATUS_EMAIL_RECIPIENT = props.STATUS_EMAIL_RECIPIENT;
-        this.STATUS_EMAIL_SENDER = props.STATUS_EMAIL_SENDER;
-        this.SITE_URL = props.SITE_URL;
+        this.STATUS_EMAIL_RECIPIENT = STATUS_EMAIL_RECIPIENT;
+        this.STATUS_EMAIL_SENDER = STATUS_EMAIL_SENDER;
+        this.SITE_URL = SITE_URL;
     }
 
     public void sendDeploymentStatusEmail(boolean success, String errorMessage, @NonNull List<MavenPackage> packages, String requestId) {

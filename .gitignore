@@ -40,4 +40,4 @@ build/
 .DS_Store
 
 .wrangler
-secrets.mk
+src/main/resources/application-local.properties

@@ -3,19 +3,28 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.config;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.google.inject.name.Names;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
 import jakarta.inject.Named;
+import lombok.Cleanup;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ses.SesClient;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Properties;
 
 public class AppModule extends AbstractModule {
 
@@ -23,52 +32,7 @@ public class AppModule extends AbstractModule {
     protected void configure() {
         // Binding DeploymentService so that is initialized eagerly at application startup
         bind(DeploymentService.class);
-    }
-
-    @Provides
-    @Singleton
-    Props provideProps() {
-        boolean DISABLE_SNAPSHOTS = Boolean.parseBoolean(System.getenv("DISABLE_SNAPSHOTS"));
-        boolean DISABLE_CLOUDFLARE_DEPLOYMENT = Boolean.parseBoolean(System.getenv("DISABLE_CLOUDFLARE_DEPLOYMENT"));
-        boolean DISABLE_TEMP_FILE_DELETION = Boolean.parseBoolean(System.getenv("DISABLE_TEMP_FILE_DELETION"));
-        boolean DISABLE_STATUS_EMAIL = Boolean.parseBoolean(System.getenv("DISABLE_STATUS_EMAIL"));
-
-        String CLOUDFLARE_API_TOKEN = System.getenv("CLOUDFLARE_API_TOKEN");
-        if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_API_TOKEN == null) {
-            throw new IllegalArgumentException("Cloudflare API token must be provided as environment variable with key 'CLOUDFLARE_API_TOKEN'");
-        }
-
-        String CLOUDFLARE_PROJECT_NAME = System.getenv("CLOUDFLARE_PROJECT_NAME");
-        if(!DISABLE_CLOUDFLARE_DEPLOYMENT && CLOUDFLARE_PROJECT_NAME == null) {
-            throw new IllegalArgumentException("Cloudflare project name must be provided as system property with key 'CLOUDFLARE_PROJECT_NAME'");
-        }
-
-        String STATUS_EMAIL_RECIPIENT = System.getenv("STATUS_EMAIL_RECIPIENT");
-        String STATUS_EMAIL_SENDER = System.getenv("STATUS_EMAIL_SENDER");
-        String SITE_URL = System.getenv("SITE_URL");
-        if(!DISABLE_STATUS_EMAIL) {
-            if(STATUS_EMAIL_RECIPIENT == null) {
-                throw new IllegalArgumentException("Status email recipient must be provided as environment variable with key 'STATUS_EMAIL_RECIPIENT'");
-            }
-            if(STATUS_EMAIL_SENDER == null) {
-                throw new IllegalArgumentException("Status email sender must be provided as environment variable with key 'STATUS_EMAIL_SENDER'");
-            }
-            if(SITE_URL == null) {
-                throw new IllegalArgumentException("Site URL must be provided as environment variable with key 'SITE_URL'");
-            }
-        }
-
-        return new Props(
-                DISABLE_SNAPSHOTS,
-                DISABLE_CLOUDFLARE_DEPLOYMENT,
-                DISABLE_TEMP_FILE_DELETION,
-                DISABLE_STATUS_EMAIL,
-                CLOUDFLARE_API_TOKEN,
-                CLOUDFLARE_PROJECT_NAME,
-                STATUS_EMAIL_RECIPIENT,
-                STATUS_EMAIL_SENDER,
-                SITE_URL
-        );
+        Names.bindProperties(binder(), loadProperties());
     }
 
     @Provides
@@ -82,12 +46,16 @@ public class AppModule extends AbstractModule {
 
     @Provides
     @Singleton
-    List<MavenRepository> provideRepositories(Props props) {
+    List<MavenRepository> provideRepositories(
+            @Named("repository.central.base-url") String CENTRAL_BASE_URL,
+            @Named("repository.snapshot.base-url") String SNAPSHOT_BASE_URL,
+            @Named("repository.snapshot.disabled") String DISABLE_SNAPSHOTS
+    ) {
         List<MavenRepository> repositories = new ArrayList<>();
         // For stable releases
-        repositories.add(new MavenRepository("https://repo1.maven.org/maven2", false));
-        if(!props.DISABLE_SNAPSHOTS)
-            repositories.add(new MavenRepository("https://central.sonatype.com/repository/maven-snapshots", true));
+        repositories.add(new MavenRepository(CENTRAL_BASE_URL, false));
+        if(!Boolean.parseBoolean(DISABLE_SNAPSHOTS))
+            repositories.add(new MavenRepository(SNAPSHOT_BASE_URL, true));
         return Collections.unmodifiableList(repositories);
     }
 
@@ -126,10 +94,52 @@ public class AppModule extends AbstractModule {
 
     @Provides
     @Singleton
-    SesClient provideSesClient() {
+    AwsCredentialsProvider provideAwsCredentialsProvider(
+            @Named("aws.access-key-id") String AWS_ACCESS_KEY_ID,
+            @Named("aws.secret-access-key") String AWS_SECRET_ACCESS_KEY
+    ) {
+        return AwsCredentialsProviderChain.of(
+                StaticCredentialsProvider.create(AwsBasicCredentials.create(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY))
+        );
+    }
+
+    @Provides
+    @Singleton
+    SesClient provideSesClient(AwsCredentialsProvider awsCredentialsProvider) {
         return SesClient
                 .builder()
                 .region(Region.AP_SOUTH_2)
+                .credentialsProvider(awsCredentialsProvider)
                 .build();
+    }
+
+    private Properties loadProperties() {
+        try {
+            // Load properties from application.properties file in the classpath
+            Properties props = loadProperties("application.properties");
+            // Override with application-local.properties if it exists in the classpath
+            Properties localProps = loadProperties("application-local.properties");
+
+            // Override with system properties
+            Properties systemProps = System.getProperties();
+
+            Properties finalProps = new Properties();
+            finalProps.putAll(props);
+            finalProps.putAll(localProps);
+            finalProps.putAll(systemProps);
+            return finalProps;
+        }
+        catch (Exception ex) {
+            throw new RuntimeException("Failed to load application properties", ex);
+        }
+    }
+
+    private Properties loadProperties(String fileName) throws IOException {
+        Properties props = new Properties();
+        @Cleanup InputStream stream = getClass()
+                .getClassLoader()
+                .getResourceAsStream(fileName);
+        if (stream != null) props.load(stream);
+        return props;
     }
 }
