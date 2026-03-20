@@ -9,29 +9,28 @@ import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.util.PropertiesUtil;
 import jakarta.inject.Named;
-import lombok.Cleanup;
+import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.scheduler.SchedulerClient;
 import software.amazon.awssdk.services.ses.SesClient;
 import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Properties;
 
+@Slf4j
 public class AppModule extends AbstractModule {
 
     @Override
     protected void configure() {
         // Binding DeploymentService so that is initialized eagerly at application startup
         bind(DeploymentService.class);
-        Names.bindProperties(binder(), loadProperties());
+        Names.bindProperties(binder(), PropertiesUtil.loadProperties());
     }
 
     @Provides
@@ -139,35 +138,5 @@ public class AppModule extends AbstractModule {
     @Singleton
     ObjectMapper provideObjectMapper() {
         return new ObjectMapper();
-    }
-
-    private Properties loadProperties() {
-        try {
-            // Load properties from application.properties file in the classpath
-            Properties props = loadProperties("application.properties");
-            // Override with application-local.properties if it exists in the classpath
-            Properties localProps = loadProperties("application-local.properties");
-
-            // Override with system properties
-            Properties systemProps = System.getProperties();
-
-            Properties finalProps = new Properties();
-            finalProps.putAll(props);
-            finalProps.putAll(localProps);
-            finalProps.putAll(systemProps);
-            return finalProps;
-        }
-        catch (Exception ex) {
-            throw new RuntimeException("Failed to load application properties", ex);
-        }
-    }
-
-    private Properties loadProperties(String fileName) throws IOException {
-        Properties props = new Properties();
-        @Cleanup InputStream stream = getClass()
-                .getClassLoader()
-                .getResourceAsStream(fileName);
-        if (stream != null) props.load(stream);
-        return props;
     }
 }
