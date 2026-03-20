@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.matcher.Matchers;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableHttpStatusException;
 import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.retry.RetryRegistry;
 
@@ -17,7 +18,7 @@ public class RetryModule extends AbstractModule {
                 .custom()
                 .maxAttempts(3)
                 .waitDuration(Duration.ofSeconds(3))
-                .retryExceptions(RetryableException.class)
+                .retryExceptions(RetryableException.class, RetryableHttpStatusException.class)
                 .build()
         );
         RetryInterceptor interceptor = new RetryInterceptor(retryRegistry);

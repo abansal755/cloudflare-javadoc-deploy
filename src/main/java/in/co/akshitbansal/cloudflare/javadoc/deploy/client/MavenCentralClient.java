@@ -2,9 +2,12 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.client;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastHttpClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.enums.DeploymentStatus;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.HttpStatusException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableHttpStatusException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.DeploymentStatusRes;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
@@ -22,7 +25,6 @@ import javax.xml.xpath.XPathFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.text.MessageFormat;
@@ -34,7 +36,7 @@ import java.util.List;
 @Slf4j
 public class MavenCentralClient {
 
-    private final HttpClient httpClient;
+    private final FailFastHttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final List<MavenRepository> repositories;
 
@@ -45,7 +47,7 @@ public class MavenCentralClient {
 
     @Inject
     public MavenCentralClient(
-            HttpClient httpClient,
+            FailFastHttpClient httpClient,
             ObjectMapper objectMapper,
             List<MavenRepository> repositories,
             @Named("maven-central.base-url") String BASE_URL,
@@ -102,49 +104,31 @@ public class MavenCentralClient {
                         .newBuilder()
                         .uri(uri)
                         .build();
-                HttpResponse<InputStream> response;
                 try {
-                    response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                }
-                catch (IOException | SecurityException ex) {
-                    throw new RetryableException(MessageFormat.format(
-                            "Recoverable exception occurred while trying to fetch javadoc jar for artifact {0} from repository {1}",
-                            mavenArtifact, repository
-                    ), ex);
-                }
-                catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt(); // Restore interrupted status
-                    throw new RuntimeException(MessageFormat.format(
-                            "Thread was interrupted while trying to fetch javadoc jar for artifact {0} from repository {1}",
-                            mavenArtifact, repository
-                    ), ex);
-                }
-                int statusCode = response.statusCode();
-                InputStream bodyStream = response.body();
-                if(statusCode >= 200 && statusCode < 300) {
+                    HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
                     log.info("Found javadoc jar for artifact {} in repository {}", mavenArtifact, repository);
-                    return bodyStream; // caller is responsible for closing the stream after consuming it
+                    return response.body(); // caller is responsible for closing the stream after consuming it
                 }
-                if(statusCode == 404) {
-                    log.warn("Javadoc jar for artifact {} not found in repository {}", mavenArtifact, repository);
+                catch (HttpStatusException ex) {
+                    // Close the response body stream to prevent resource leak
+                    HttpResponse<?> response = ex.getResponse();
+                    InputStream bodyStream = (InputStream) response.body();
                     bodyStream.close();
-                    continue;
+                    int statusCode = response.statusCode();
+                    if(statusCode == 404) {
+                        // Not throwing exception here because not all repositories may have the javadoc jar for the artifact, we want to try all repositories before giving up
+                        log.warn("Javadoc jar for artifact {} not found in repository {}", mavenArtifact, repository);
+                        continue;
+                    }
+                    throw ex;
                 }
-                String errorOutput = new String(bodyStream.readAllBytes());
-                bodyStream.close();
-                String message = MessageFormat.format(
-                        "Failed to fetch javadoc jar for artifact {0} from repository {1}. HTTP status code: {2}. Error output: {3}",
-                        mavenArtifact, repository, statusCode, errorOutput
-                );
-                if(statusCode == 429 || statusCode == 408 || statusCode >= 500) throw new RetryableException(message);
-                throw new IllegalStateException(message);
             }
             throw new IllegalStateException(MessageFormat.format(
                     "Unable to locate javadoc jar for artifact {0}",
                     mavenArtifact
             ));
         }
-        catch (RetryableException ex) {
+        catch (RetryableException | RetryableHttpStatusException ex) {
             throw ex;
         }
         catch (Exception ex) {
@@ -154,51 +138,18 @@ public class MavenCentralClient {
 
     @Retry
     public DeploymentStatus getDeploymentStatus(@NonNull String deploymentId) {
-        try {
-            URI uri = URI.create(BASE_URL + GET_DEPLOYMENT_STATUS_ENDPOINT + "?id=" + deploymentId);
-            log.info("POST {}", uri);
-            HttpRequest request = HttpRequest
-                    .newBuilder()
-                    .uri(uri)
-                    .header("Authorization", "Bearer " + getBearerToken(USERNAME, PASSWORD))
-                    .POST(HttpRequest.BodyPublishers.noBody())
-                    .build();
+        HttpRequest request = HttpRequest
+                .newBuilder()
+                .uri(URI.create(BASE_URL + GET_DEPLOYMENT_STATUS_ENDPOINT + "?id=" + deploymentId))
+                .header("Authorization", "Bearer " + getBearerToken(USERNAME, PASSWORD))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
 
-            HttpResponse<String> response;
-            try {
-                response= httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            }
-            catch (IOException ex) {
-                throw new RetryableException("Recoverable exception occurred while trying to fetch deployment status for deployment ID: " + deploymentId, ex);
-            }
-            catch (InterruptedException ex) {
-                Thread.currentThread().interrupt(); // Restore interrupted status
-                throw new RuntimeException("Thread was interrupted while trying to fetch deployment status for deployment ID: " + deploymentId, ex);
-            }
-            int statusCode = response.statusCode();
-            if(statusCode == 429 || statusCode == 408 || statusCode >= 500) {
-                throw new RetryableException(MessageFormat.format(
-                        "Received HTTP status code {0} while trying to fetch deployment status for deployment ID: {1}",
-                        statusCode, deploymentId
-                ));
-            }
-            if(statusCode >= 400) {
-                throw new IllegalStateException(MessageFormat.format(
-                        "Failed to fetch deployment status for deployment ID: {0}. HTTP status code: {1}",
-                        deploymentId, statusCode
-                ));
-            }
-            DeploymentStatusRes deploymentStatusRes = objectMapper.readValue(response.body(), DeploymentStatusRes.class);
-            DeploymentStatus status = deploymentStatusRes.getDeploymentState();
-            log.info("Fetched deployment status for deployment ID {}: {}", deploymentId, status);
-            return status;
-        }
-        catch (RetryableException ex) {
-            throw ex;
-        }
-        catch (Exception ex) {
-            throw new RuntimeException("Failed to fetch deployment status for deployment ID: " + deploymentId, ex);
-        }
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        DeploymentStatusRes deploymentStatusRes = objectMapper.readValue(response.body(), DeploymentStatusRes.class);
+        DeploymentStatus status = deploymentStatusRes.getDeploymentState();
+        log.info("Fetched deployment status for deployment ID {}: {}", deploymentId, status);
+        return status;
     }
 
     private String getMetadataPath(MavenPackage mavenPackage) {

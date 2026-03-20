@@ -6,6 +6,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Names;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastHttpClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
@@ -35,11 +36,11 @@ public class AppModule extends AbstractModule {
 
     @Provides
     @Singleton
-    HttpClient provideHttpClient() {
-        return HttpClient
-                .newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL) // Always follow redirects, except from HTTPS URLs to HTTP URLs
-                .build();
+    FailFastHttpClient provideHttpClient() {
+        return FailFastHttpClient
+                .newInstance(builder -> builder
+                        .followRedirects(HttpClient.Redirect.NORMAL) // Always follow redirects, except from HTTPS URLs to HTTP URLs
+                );
     }
 
     @Provides
