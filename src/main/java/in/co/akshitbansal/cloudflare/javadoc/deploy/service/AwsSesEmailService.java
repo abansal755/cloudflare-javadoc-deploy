@@ -30,13 +30,13 @@ public class AwsSesEmailService {
 
     @Inject
     public AwsSesEmailService(
-            SesClient sesClient,
+            ResourcesService resourcesService,
             @Named("statusEmailTemplate") Template freemarkerTemplate,
             @Named("stage.status-email.recipient") String STATUS_EMAIL_RECIPIENT,
             @Named("stage.status-email.sender") String STATUS_EMAIL_SENDER,
             @Named("stage.status-email.site-url") String SITE_URL
     ) {
-        this.sesClient = sesClient;
+        this.sesClient = resourcesService.getSesClient();
         this.freemarkerTemplate = freemarkerTemplate;
         this.STATUS_EMAIL_RECIPIENT = STATUS_EMAIL_RECIPIENT;
         this.STATUS_EMAIL_SENDER = STATUS_EMAIL_SENDER;

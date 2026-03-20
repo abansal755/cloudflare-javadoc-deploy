@@ -29,9 +29,9 @@ public class IndexHtmlGeneratingService {
     private final ExecutorService executor;
 
     @Inject
-    public IndexHtmlGeneratingService(@Named("indexHtmlTemplate") Template freemarkerTemplate, ExecutorService executor) {
+    public IndexHtmlGeneratingService(@Named("indexHtmlTemplate") Template freemarkerTemplate, ResourcesService resourcesService) {
         this.freemarkerTemplate = freemarkerTemplate;
-        this.executor = executor;
+        this.executor = resourcesService.getExecutor();
     }
 
     public void generateIndexHtml(String startingPath, int maxDepth) {

@@ -38,19 +38,18 @@ public class SchedulingService {
 
     @Inject
     public SchedulingService(
-            ExecutorService executor,
+            ResourcesService resourcesService,
             MavenCentralClient mavenCentralClient,
             DeploymentService deploymentService,
-            SchedulerClient schedulerClient,
             ObjectMapper objectMapper,
             @Named("stage.schedule.role-arn") String ROLE_ARN,
             @Named("stage.schedule.lambda-arn") String FUNCTION_ARN,
             @Named("stage.schedule.group-name") String GROUP_NAME
     ) {
-        this.executor = executor;
+        this.executor = resourcesService.getExecutor();
         this.mavenCentralClient = mavenCentralClient;
         this.deploymentService = deploymentService;
-        this.schedulerClient = schedulerClient;
+        this.schedulerClient = resourcesService.getSchedulerClient();
         this.objectMapper = objectMapper;
         this.ROLE_ARN = ROLE_ARN;
         this.FUNCTION_ARN = FUNCTION_ARN;

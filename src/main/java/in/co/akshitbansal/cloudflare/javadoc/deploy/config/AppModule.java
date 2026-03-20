@@ -14,9 +14,6 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.util.PropertiesUtil;
 import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.auth.credentials.*;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.scheduler.SchedulerClient;
-import software.amazon.awssdk.services.ses.SesClient;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.http.HttpClient;
@@ -113,26 +110,6 @@ public class AppModule extends AbstractModule {
             );
         }
         throw new RuntimeException("No valid active profile found for AWS credentials provider configuration. Active profiles: " + activeProfiles);
-    }
-
-    @Provides
-    @Singleton
-    SesClient provideSesClient(AwsCredentialsProvider awsCredentialsProvider) {
-        return SesClient
-                .builder()
-                .region(Region.AP_SOUTH_2)
-                .credentialsProvider(awsCredentialsProvider)
-                .build();
-    }
-
-    @Provides
-    @Singleton
-    SchedulerClient provideSchedulerClient(AwsCredentialsProvider awsCredentialsProvider) {
-        return SchedulerClient
-                .builder()
-                .region(Region.AP_SOUTH_2)
-                .credentialsProvider(awsCredentialsProvider)
-                .build();
     }
 
     @Provides
