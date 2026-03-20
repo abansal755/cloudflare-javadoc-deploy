@@ -9,7 +9,9 @@ import jakarta.inject.Named;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.services.scheduler.SchedulerClient;
-import software.amazon.awssdk.services.scheduler.model.*;
+import software.amazon.awssdk.services.scheduler.model.CreateScheduleRequest;
+import software.amazon.awssdk.services.scheduler.model.CreateScheduleResponse;
+import software.amazon.awssdk.services.scheduler.model.FlexibleTimeWindowMode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.text.MessageFormat;
@@ -38,18 +40,19 @@ public class SchedulingService {
 
     @Inject
     public SchedulingService(
-            ResourcesService resourcesService,
+            ExecutorService executor,
             MavenCentralClient mavenCentralClient,
             DeploymentService deploymentService,
+            SchedulerClient schedulerClient,
             ObjectMapper objectMapper,
             @Named("stage.schedule.role-arn") String ROLE_ARN,
             @Named("stage.schedule.lambda-arn") String FUNCTION_ARN,
             @Named("stage.schedule.group-name") String GROUP_NAME
     ) {
-        this.executor = resourcesService.getExecutor();
+        this.executor = executor;
         this.mavenCentralClient = mavenCentralClient;
         this.deploymentService = deploymentService;
-        this.schedulerClient = resourcesService.getSchedulerClient();
+        this.schedulerClient = schedulerClient;
         this.objectMapper = objectMapper;
         this.ROLE_ARN = ROLE_ARN;
         this.FUNCTION_ARN = FUNCTION_ARN;

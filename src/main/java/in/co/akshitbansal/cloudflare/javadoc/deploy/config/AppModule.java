@@ -8,26 +8,35 @@ import freemarker.template.Configuration;
 import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastHttpClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.MDCExecutorService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.service.DeploymentService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.ResourcesLifecycleManager;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.SchedulingService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.util.PropertiesUtil;
 import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.auth.credentials.*;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.scheduler.SchedulerClient;
+import software.amazon.awssdk.services.ses.SesClient;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 public class AppModule extends AbstractModule {
 
     @Override
     protected void configure() {
-        // Binding DeploymentService so that is initialized eagerly at application startup
-        bind(DeploymentService.class);
+        // Bind services as eager singletons to ensure they are initialized at application startup
+        bind(SchedulingService.class).asEagerSingleton();
+        // ResourcesLifecycleManager is responsible for closing resources like ExecutorService and AWS clients, so it should also be an eager singleton
+        bind(ResourcesLifecycleManager.class).asEagerSingleton();
         Names.bindProperties(binder(), PropertiesUtil.loadProperties());
     }
 
@@ -116,5 +125,31 @@ public class AppModule extends AbstractModule {
     @Singleton
     ObjectMapper provideObjectMapper() {
         return new ObjectMapper();
+    }
+
+    @Provides
+    @Singleton
+    ExecutorService provideExecutor() {
+        return new MDCExecutorService(Executors.newVirtualThreadPerTaskExecutor());
+    }
+
+    @Provides
+    @Singleton
+    SesClient provideSesClient(AwsCredentialsProvider awsCredentialsProvider) {
+        return SesClient
+                .builder()
+                .region(Region.AP_SOUTH_2)
+                .credentialsProvider(awsCredentialsProvider)
+                .build();
+    }
+
+    @Provides
+    @Singleton
+    SchedulerClient provideSchedulerClient(AwsCredentialsProvider awsCredentialsProvider) {
+        return SchedulerClient
+                .builder()
+                .region(Region.AP_SOUTH_2)
+                .credentialsProvider(awsCredentialsProvider)
+                .build();
     }
 }

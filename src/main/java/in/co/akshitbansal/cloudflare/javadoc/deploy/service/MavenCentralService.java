@@ -26,9 +26,9 @@ public class MavenCentralService {
     private final ExecutorService executor;
 
     @Inject
-    public MavenCentralService(MavenCentralClient mavenCentralClient, ResourcesService resourcesService) {
+    public MavenCentralService(MavenCentralClient mavenCentralClient, ExecutorService executor) {
         this.mavenCentralClient = mavenCentralClient;
-        this.executor = resourcesService.getExecutor();
+        this.executor = executor;
     }
 
     public List<MavenArtifact> getAllArtifacts(@NonNull List<MavenPackage> packages) {
