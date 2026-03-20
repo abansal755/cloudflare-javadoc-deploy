@@ -2,6 +2,7 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
@@ -32,15 +33,13 @@ public class AwsSesEmailService {
     public AwsSesEmailService(
             SesClient sesClient,
             @Named("statusEmailTemplate") Template freemarkerTemplate,
-            @Named("stage.status-email.recipient") String STATUS_EMAIL_RECIPIENT,
-            @Named("stage.status-email.sender") String STATUS_EMAIL_SENDER,
-            @Named("stage.status-email.site-url") String SITE_URL
+            Config config
     ) {
         this.sesClient = sesClient;
         this.freemarkerTemplate = freemarkerTemplate;
-        this.STATUS_EMAIL_RECIPIENT = STATUS_EMAIL_RECIPIENT;
-        this.STATUS_EMAIL_SENDER = STATUS_EMAIL_SENDER;
-        this.SITE_URL = SITE_URL;
+        this.STATUS_EMAIL_RECIPIENT = config.getString("stage.status-email.recipient");
+        this.STATUS_EMAIL_SENDER = config.getString("stage.status-email.sender");
+        this.SITE_URL = config.getString("stage.status-email.site-url");
     }
 
     public void sendDeploymentStatusEmail(boolean success, String errorMessage, @NonNull List<MavenPackage> packages, String requestId) {

@@ -2,10 +2,10 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.MavenCentralClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.enums.DeploymentStatus;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
-import jakarta.inject.Named;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.services.scheduler.SchedulerClient;
@@ -45,18 +45,16 @@ public class SchedulingService {
             DeploymentService deploymentService,
             SchedulerClient schedulerClient,
             ObjectMapper objectMapper,
-            @Named("stage.schedule.role-arn") String ROLE_ARN,
-            @Named("stage.schedule.lambda-arn") String FUNCTION_ARN,
-            @Named("stage.schedule.group-name") String GROUP_NAME
+            Config config
     ) {
         this.executor = executor;
         this.mavenCentralClient = mavenCentralClient;
         this.deploymentService = deploymentService;
         this.schedulerClient = schedulerClient;
         this.objectMapper = objectMapper;
-        this.ROLE_ARN = ROLE_ARN;
-        this.FUNCTION_ARN = FUNCTION_ARN;
-        this.GROUP_NAME = GROUP_NAME;
+        this.ROLE_ARN = config.getString("stage.schedule.role-arn");
+        this.FUNCTION_ARN = config.getString("stage.schedule.lambda-arn");
+        this.GROUP_NAME = config.getString("stage.schedule.group-name");
     }
 
     public void schedule(@NonNull LambdaInput input, @NonNull String awsRequestId) {

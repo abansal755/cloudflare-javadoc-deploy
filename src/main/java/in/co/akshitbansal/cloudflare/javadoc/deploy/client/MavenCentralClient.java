@@ -2,6 +2,7 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.client;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastHttpClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.enums.DeploymentStatus;
@@ -12,7 +13,6 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.model.DeploymentStatusRes;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
-import jakarta.inject.Named;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.w3c.dom.Document;
@@ -50,18 +50,15 @@ public class MavenCentralClient {
             FailFastHttpClient httpClient,
             ObjectMapper objectMapper,
             List<MavenRepository> repositories,
-            @Named("maven-central.base-url") String BASE_URL,
-            @Named("maven-central.get-deployment-status-endpoint") String GET_DEPLOYMENT_STATUS_ENDPOINT,
-            @Named("maven-central.username") String USERNAME,
-            @Named("maven-central.password") String PASSWORD
+            Config config
     ) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.repositories = repositories;
-        this.BASE_URL = BASE_URL;
-        this.GET_DEPLOYMENT_STATUS_ENDPOINT = GET_DEPLOYMENT_STATUS_ENDPOINT;
-        this.USERNAME = USERNAME;
-        this.PASSWORD = PASSWORD;
+        this.BASE_URL = config.getString("maven-central.base-url");
+        this.GET_DEPLOYMENT_STATUS_ENDPOINT = config.getString("maven-central.get-deployment-status-endpoint");
+        this.USERNAME = config.getString("maven-central.username");
+        this.PASSWORD = config.getString("maven-central.password");
     }
 
     @Retry

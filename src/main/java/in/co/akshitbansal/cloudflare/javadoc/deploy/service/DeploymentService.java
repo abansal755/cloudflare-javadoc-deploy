@@ -2,9 +2,9 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
-import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
@@ -35,22 +35,19 @@ public class DeploymentService {
             CloudflareService cloudflareService,
             FilesystemService filesystemService,
             AwsSesEmailService awsSesEmailService,
-            @Named("stage.cloudflare-deployment.disabled") String DISABLE_CLOUDFLARE_DEPLOYMENT,
-            @Named("stage.temp-file-deletion.disabled") String DISABLE_TEMP_FILE_DELETION,
-            @Named("stage.status-email.disabled") String DISABLE_STATUS_EMAIL,
-            @Named("package.include") String packagesStr
+            Config config
     ) {
         this.mavenCentralService = mavenCentralService;
         this.indexHtmlGeneratingService = indexHtmlGeneratingService;
         this.cloudflareService = cloudflareService;
         this.filesystemService = filesystemService;
         this.awsSesEmailService = awsSesEmailService;
-        this.DISABLE_CLOUDFLARE_DEPLOYMENT = Boolean.parseBoolean(DISABLE_CLOUDFLARE_DEPLOYMENT);
-        this.DISABLE_TEMP_FILE_DELETION = Boolean.parseBoolean(DISABLE_TEMP_FILE_DELETION);
-        this.DISABLE_STATUS_EMAIL = Boolean.parseBoolean(DISABLE_STATUS_EMAIL);
+        this.DISABLE_CLOUDFLARE_DEPLOYMENT = config.getBoolean("stage.cloudflare-deployment.disabled");
+        this.DISABLE_TEMP_FILE_DELETION = config.getBoolean("stage.temp-file-deletion.disabled");
+        this.DISABLE_STATUS_EMAIL = config.getBoolean("stage.status-email.disabled");
 
         this.packages = Arrays
-                .stream(packagesStr.split(","))
+                .stream(config.getString("package.include").split(","))
                 .map(this::parsePackage)
                 .toList();
     }

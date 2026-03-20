@@ -104,6 +104,11 @@
             <artifactId>mycila-guice-jsr250</artifactId>
             <version>6.0</version>
         </dependency>
+        <dependency>
+            <groupId>com.typesafe</groupId>
+            <artifactId>config</artifactId>
+            <version>1.4.6</version>
+        </dependency>
     </dependencies>
 
     <build>
