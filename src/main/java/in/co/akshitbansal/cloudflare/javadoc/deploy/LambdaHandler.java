@@ -12,8 +12,12 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.config.RetryModule;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.LambdaInput;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.SchedulingService;
 import lombok.Cleanup;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
+import java.util.UUID;
+
+@Slf4j
 public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
 
     @Override
@@ -21,9 +25,20 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         // Validate input
         validateInput(input);
 
-        // Adding AWS request ID to MDC for better traceability in logs
+        // Use correlation ID from input if available, otherwise generate a new one
+        boolean isNewCorrelationId = false; // Flag to track if a new correlation ID was generated
+        if(input.getCorrelationId() == null) {
+            isNewCorrelationId = true;
+            input.setCorrelationId(UUID.randomUUID().toString());
+        }
+
+        // Put AWS request ID and correlation ID in MDC for logging
         String awsRequestId = context.getAwsRequestId();
         MDC.put("awsRequestId", awsRequestId);
+        MDC.put("correlationId", input.getCorrelationId());
+
+        // Log if a new correlation ID was generated
+        if(isNewCorrelationId) log.info("No correlation ID provided in input, generated a new one");
 
         // Create Guice injector with the application module and the properties
         // Production stage is used to ensure that singletons are eagerly initialized at startup of the Lambda function

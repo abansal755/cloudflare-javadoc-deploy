@@ -107,7 +107,7 @@ public class SchedulingService {
                 .groupName(GROUP_NAME)
                 .build();
         CreateScheduleResponse response = schedulerClient.createSchedule(request);
-        log.info("Created schedule with ARN: {} and expression: {}", response.scheduleArn(), scheduleExpression);
+        log.info("Created schedule with ARN: {}, expression: {}, lambda input: {}", response.scheduleArn(), scheduleExpression, input);
     }
 
     private String getScheduleExpression() {

@@ -8,4 +8,5 @@ import java.util.List;
 public class LambdaInput {
 
     private List<String> deploymentIds;
+    private String correlationId;
 }
