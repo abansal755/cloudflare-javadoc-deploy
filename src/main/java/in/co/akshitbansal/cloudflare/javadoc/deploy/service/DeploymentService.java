@@ -5,12 +5,14 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 @Singleton
 @Slf4j
@@ -52,7 +54,7 @@ public class DeploymentService {
                 .toList();
     }
 
-    public void deploy(String awsRequestId) {
+    public void deploy(@NonNull String awsRequestId, @NonNull UUID correlationId) {
         boolean deploymentSuccess = true;
         String errorMessage = null;
 
@@ -88,7 +90,7 @@ public class DeploymentService {
         finally {
             // Send deployment status email
             if(DISABLE_STATUS_EMAIL) log.warn("Status email sending is disabled. Skipping sending deployment status email.");
-            else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, errorMessage, packages, awsRequestId);
+            else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, errorMessage, packages, awsRequestId, correlationId);
         }
     }
 

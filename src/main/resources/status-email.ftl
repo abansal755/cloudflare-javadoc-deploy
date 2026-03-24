@@ -113,6 +113,7 @@
 
           <div class="details">
             <div><span>Request ID</span> ${requestId?default("N/A")}</div>
+            <div><span>Correlation ID</span> ${correlationId?default("N/A")}</div>
             <div><span>Site URL</span>
               <#if siteUrl?? && siteUrl?has_content>
                 <a href="${siteUrl}">${siteUrl}</a>

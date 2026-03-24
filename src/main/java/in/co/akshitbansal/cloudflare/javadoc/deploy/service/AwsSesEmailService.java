@@ -17,6 +17,7 @@ import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Singleton
 @Slf4j
@@ -42,7 +43,7 @@ public class AwsSesEmailService {
         this.SITE_URL = config.getString("stage.status-email.site-url");
     }
 
-    public void sendDeploymentStatusEmail(boolean success, String errorMessage, @NonNull List<MavenPackage> packages, String requestId) {
+    public void sendDeploymentStatusEmail(boolean success, String errorMessage, @NonNull List<MavenPackage> packages, @NonNull String requestId, @NonNull UUID correlationId) {
         try {
             // Recipient
             Destination destination = Destination.builder()
@@ -54,7 +55,7 @@ public class AwsSesEmailService {
                     .build();
 
             // Body
-            String emailContent = generateEmailContent(success, errorMessage, packages, requestId);
+            String emailContent = generateEmailContent(success, errorMessage, packages, requestId, correlationId);
             Content content = Content.builder()
                     .data(emailContent)
                     .build();
@@ -82,7 +83,7 @@ public class AwsSesEmailService {
         }
     }
 
-    private String generateEmailContent(boolean success, String errorMessage, @NonNull List<MavenPackage> packages, String requestId) throws TemplateException, IOException {
+    private String generateEmailContent(boolean success, String errorMessage, @NonNull List<MavenPackage> packages, String requestId, UUID correlationId) throws TemplateException, IOException {
         StringWriter writer = new StringWriter();
         Map<String, Object> dataModel = new HashMap<>();
         dataModel.put("success", success);
@@ -90,6 +91,7 @@ public class AwsSesEmailService {
         dataModel.put("packages", packages);
         dataModel.put("siteUrl", SITE_URL);
         dataModel.put("requestId", requestId);
+        dataModel.put("correlationId", correlationId.toString());
         freemarkerTemplate.process(dataModel, writer);
         return writer.toString();
     }

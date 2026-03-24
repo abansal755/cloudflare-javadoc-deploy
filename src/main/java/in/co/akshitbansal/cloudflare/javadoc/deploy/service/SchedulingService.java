@@ -21,6 +21,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
@@ -57,7 +58,7 @@ public class SchedulingService {
         this.GROUP_NAME = config.getString("stage.schedule.group-name");
     }
 
-    public void schedule(@NonNull LambdaInput input, @NonNull String awsRequestId) {
+    public void schedule(@NonNull LambdaInput input, @NonNull String awsRequestId, @NonNull UUID correlationId) {
         // Check deployment status for all deploymentIds in parallel
         List<String> deploymentIds = input.getDeploymentIds();
         log.info("Checking deployment status for deploymentIds: {}", deploymentIds);
@@ -87,7 +88,7 @@ public class SchedulingService {
         if(!anyNonPublished) {
             // Run cloudflare deployment if all deployments are published
             log.info("All deployments are published. Starting Cloudflare deployment");
-            deploymentService.deploy(awsRequestId);
+            deploymentService.deploy(awsRequestId, correlationId);
             return;
         }
         // schedule self after 5 mins if any deployment is not published

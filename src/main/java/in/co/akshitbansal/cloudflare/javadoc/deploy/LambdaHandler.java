@@ -52,7 +52,7 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
                 .getInstance(CloseableInjector.class);
 
         SchedulingService schedulingService = injector.getInstance(SchedulingService.class);
-        schedulingService.schedule(input, awsRequestId);
+        schedulingService.schedule(input, awsRequestId, input.getCorrelationId());
         return null;
     }
 
