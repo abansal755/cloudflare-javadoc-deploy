@@ -29,13 +29,13 @@ public class LambdaHandler implements RequestHandler<LambdaInput, Void> {
         boolean isNewCorrelationId = false; // Flag to track if a new correlation ID was generated
         if(input.getCorrelationId() == null) {
             isNewCorrelationId = true;
-            input.setCorrelationId(UUID.randomUUID().toString());
+            input.setCorrelationId(UUID.randomUUID());
         }
 
         // Put AWS request ID and correlation ID in MDC for logging
         String awsRequestId = context.getAwsRequestId();
         MDC.put("awsRequestId", awsRequestId);
-        MDC.put("correlationId", input.getCorrelationId());
+        MDC.put("correlationId", input.getCorrelationId().toString());
 
         // Log if a new correlation ID was generated
         if(isNewCorrelationId) log.info("No correlation ID provided in input, generated a new one");
