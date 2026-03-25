@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.UUID;
 
 @Singleton
@@ -57,11 +58,12 @@ public class DeploymentService {
     public void deploy(@NonNull String awsRequestId, @NonNull UUID correlationId) {
         boolean deploymentSuccess = true;
         String errorMessage = null;
+        List<MavenArtifact> artifacts = new ArrayList<>();
 
         try {
             // Fetch all artifacts for the given packages from Maven Central
             log.info("Found packages to scan: {}", packages);
-            List<MavenArtifact> artifacts = mavenCentralService.getAllArtifacts(packages);
+            artifacts = mavenCentralService.getAllArtifacts(packages);
 
             // Create a temporary directory to prepare the javadoc site bundle
             Path tempDir = Files.createTempDirectory("cloudflare-javadoc");
@@ -90,7 +92,7 @@ public class DeploymentService {
         finally {
             // Send deployment status email
             if(DISABLE_STATUS_EMAIL) log.warn("Status email sending is disabled. Skipping sending deployment status email.");
-            else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, errorMessage, packages, awsRequestId, correlationId);
+            else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, errorMessage, packages, artifacts, awsRequestId, correlationId);
         }
     }
 

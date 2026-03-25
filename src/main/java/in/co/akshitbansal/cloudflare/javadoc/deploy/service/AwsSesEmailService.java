@@ -5,6 +5,8 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.VersionComparator;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import jakarta.inject.Named;
 import lombok.NonNull;
@@ -14,10 +16,7 @@ import software.amazon.awssdk.services.ses.model.*;
 
 import java.io.IOException;
 import java.io.StringWriter;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 @Singleton
 @Slf4j
@@ -43,7 +42,14 @@ public class AwsSesEmailService {
         this.SITE_URL = config.getString("stage.status-email.site-url");
     }
 
-    public void sendDeploymentStatusEmail(boolean success, String errorMessage, @NonNull List<MavenPackage> packages, @NonNull String requestId, @NonNull UUID correlationId) {
+    public void sendDeploymentStatusEmail(
+            boolean success,
+            String errorMessage,
+            @NonNull List<MavenPackage> packages,
+            @NonNull List<MavenArtifact> artifacts,
+            @NonNull String requestId,
+            @NonNull UUID correlationId
+    ) {
         try {
             // Recipient
             Destination destination = Destination.builder()
@@ -55,7 +61,7 @@ public class AwsSesEmailService {
                     .build();
 
             // Body
-            String emailContent = generateEmailContent(success, errorMessage, packages, requestId, correlationId);
+            String emailContent = generateEmailContent(success, errorMessage, packages, artifacts, requestId, correlationId);
             Content content = Content.builder()
                     .data(emailContent)
                     .build();
@@ -83,16 +89,44 @@ public class AwsSesEmailService {
         }
     }
 
-    private String generateEmailContent(boolean success, String errorMessage, @NonNull List<MavenPackage> packages, String requestId, UUID correlationId) throws TemplateException, IOException {
+    private String generateEmailContent(
+            boolean success,
+            String errorMessage,
+            @NonNull List<MavenPackage> packages,
+            @NonNull List<MavenArtifact> artifacts,
+            String requestId,
+            UUID correlationId
+    ) throws TemplateException, IOException {
         StringWriter writer = new StringWriter();
         Map<String, Object> dataModel = new HashMap<>();
         dataModel.put("success", success);
         dataModel.put("errorMessage", errorMessage);
         dataModel.put("packages", packages);
+        dataModel.put("artifactsByPackage", getArtifactsByPackage(packages, artifacts));
         dataModel.put("siteUrl", SITE_URL);
         dataModel.put("requestId", requestId);
         dataModel.put("correlationId", correlationId.toString());
         freemarkerTemplate.process(dataModel, writer);
         return writer.toString();
+    }
+
+    private Map<String, List<String>> getArtifactsByPackage(@NonNull List<MavenPackage> packages, @NonNull List<MavenArtifact> artifacts) {
+        Map<String , List<String>> artifactsByPackage = new HashMap<>();
+        for(MavenArtifact artifact: artifacts) {
+            String packageCoordinate = toPackageCoordinate(new MavenPackage(artifact.getGroupId(), artifact.getArtifactId()));
+            artifactsByPackage.compute(packageCoordinate, (key, existingArtifacts) -> {
+                if(existingArtifacts == null)
+                    existingArtifacts = new ArrayList<>();
+                existingArtifacts.add(artifact.getVersion());
+                return existingArtifacts;
+            });
+        }
+        for(List<String> versions: artifactsByPackage.values())
+            versions.sort(new VersionComparator());
+        return artifactsByPackage;
+    }
+
+    private String toPackageCoordinate(@NonNull MavenPackage mavenPackage) {
+        return mavenPackage.getGroupId() + ":" + mavenPackage.getArtifactId();
     }
 }
