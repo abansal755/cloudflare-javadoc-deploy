@@ -264,8 +264,6 @@
       }
       .footer {
         margin-top: 24px;
-        padding-top: 18px;
-        border-top: 1px solid #ebe3d6;
         font-size: 12px;
         color: #8b8374;
       }
