@@ -175,15 +175,92 @@
         font-size: 13px;
         line-height: 1.5;
       }
-      .error {
-        background: #fff1f1;
+      .trace-card {
         border: 1px solid #efc3c7;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #fff7f7;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      }
+      .trace-header {
+        padding: 12px 16px;
+        background: linear-gradient(135deg, #7a2d35 0%, #5a1f26 100%);
+        color: #fff7f7;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .trace-subtitle {
+        margin: 0;
+        padding: 12px 16px 0;
+        color: #8c5d63;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .trace-list {
+        margin: 0;
+        padding: 16px;
+        list-style: none;
+      }
+      .trace-section {
+        margin-top: 14px;
+        border: 1px solid #ecd1d4;
+        border-radius: 14px;
+        background: #fffdfd;
+        overflow: hidden;
+      }
+      .trace-section:first-child {
+        margin-top: 0;
+      }
+      .trace-section-header {
+        padding: 12px 16px;
+        background: #f9e6e8;
+        border-bottom: 1px solid #ecd1d4;
+      }
+      .trace-section-label {
+        margin: 0 0 6px;
+        color: #8f4f58;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .trace-exception {
+        margin: 0;
+        color: #5a1f26;
+        font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+      }
+      .trace-message {
+        margin: 8px 0 0;
+        color: #7c555b;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .trace-frames {
+        margin: 0;
+        padding: 12px 16px 16px 32px;
         color: #7a2d35;
-        padding: 14px;
-        border-radius: 12px;
+      }
+      .trace-frames li {
+        margin: 8px 0 0;
         font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
         font-size: 12px;
-        white-space: pre-wrap;
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+      .trace-frames li:first-child {
+        margin-top: 0;
+      }
+      .trace-empty {
+        margin: 0;
+        padding: 14px 16px 16px;
+        color: #8a7e70;
+        font-size: 13px;
+        line-height: 1.5;
       }
       .footer {
         margin-top: 24px;
@@ -266,18 +343,17 @@
             </div>
           </#if>
 
-          <#if artifactsByPackage?? && artifactsByPackage?size gt 0>
+          <#if resolvedPackageArtifacts?? && resolvedPackageArtifacts?size gt 0>
             <div class="section-title">Resolved Artifacts</div>
-            <#list artifactsByPackage?keys as packageName>
+            <#list resolvedPackageArtifacts as packageArtifacts>
               <div class="package-card">
                 <div class="package-card-header">
-                  <div class="package-name">${packageName}</div>
+                  <div class="package-name">${packageArtifacts.packageCoordinate}</div>
                 </div>
                 <div class="package-card-body">
-                <#assign packageArtifacts = artifactsByPackage[packageName]>
-                <#if packageArtifacts?size gt 0>
+                <#if packageArtifacts.versions?? && packageArtifacts.versions?size gt 0>
                   <div>
-                    <#list packageArtifacts as artifact>
+                    <#list packageArtifacts.versions as artifact>
                       <span class="artifact-chip">${artifact}</span>
                     </#list>
                   </div>
@@ -289,9 +365,38 @@
             </#list>
           </#if>
 
-          <#if !success && errorMessage??>
-            <div class="section-title">Error</div>
-            <div class="error">${errorMessage}</div>
+          <#if !success && failureTraceSections?? && failureTraceSections?size gt 0>
+            <div class="section-title">Failure Trace</div>
+            <div class="trace-card">
+              <div class="trace-header">Stack Trace</div>
+              <p class="trace-subtitle">
+                Codebase frames captured from the failed deployment run.
+              </p>
+              <div class="trace-list">
+                <#list failureTraceSections as section>
+                  <div class="trace-section">
+                    <div class="trace-section-header">
+                      <#if section.causedBy>
+                        <div class="trace-section-label">Caused by</div>
+                      </#if>
+                      <p class="trace-exception">${section.exceptionClassName}</p>
+                      <#if section.message?? && section.message?has_content>
+                        <p class="trace-message">${section.message}</p>
+                      </#if>
+                    </div>
+                    <#if section.codebaseFrames?? && section.codebaseFrames?size gt 0>
+                      <ul class="trace-frames">
+                        <#list section.codebaseFrames as frame>
+                          <li>${frame}</li>
+                        </#list>
+                      </ul>
+                    <#else>
+                      <p class="trace-empty">No stack frames from this codebase were present for this exception.</p>
+                    </#if>
+                  </div>
+                </#list>
+              </div>
+            </div>
           </#if>
 
           <div class="footer">

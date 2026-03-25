@@ -5,6 +5,7 @@ import com.google.inject.Singleton;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.VersionComparator;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.freemarker.PackageIndexTemplateModel;
 import jakarta.inject.Named;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
@@ -14,9 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.MessageFormat;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Stream;
@@ -87,11 +86,9 @@ public class IndexHtmlGeneratingService {
 
     private void generateAndSaveIndexHtml(Path path, String relativePath, List<String> dirs, boolean isVersionListingPage) throws IOException, TemplateException {
         @Cleanup BufferedWriter writer = Files.newBufferedWriter(path.resolve("index.html"));
-        Map<String, Object> dataModel = new HashMap<>();
-        dataModel.put("currentPath", relativePath);
-        dataModel.put("directories", dirs);
 
         // Specifically for version listing pages
+        boolean showSnapshotToggle = false;
         if (isVersionListingPage) {
             boolean hasSnapshotDirectories = dirs
                     .stream()
@@ -101,12 +98,17 @@ public class IndexHtmlGeneratingService {
                     .anyMatch(dir -> !dir.endsWith("-SNAPSHOT"));
             // Show the snapshot toggle only if there are both snapshot and release directories present.
             // If there are only snapshot directories or only release directories, then the toggle is not needed and can be hidden.
-            dataModel.put("showSnapshotToggle", hasReleaseDirectories && hasSnapshotDirectories);
+            showSnapshotToggle = hasReleaseDirectories && hasSnapshotDirectories;
         }
-        else dataModel.put("showSnapshotToggle", false);
 
-        if (!relativePath.equals("/")) dataModel.put("parentPath", "..");
-        freemarkerTemplate.process(dataModel, writer);
+        PackageIndexTemplateModel templateModel = PackageIndexTemplateModel
+                .builder()
+                .currentPath(relativePath)
+                .directories(dirs)
+                .showSnapshotToggle(showSnapshotToggle)
+                .showParentLink(!relativePath.equals("/"))
+                .build();
+        freemarkerTemplate.process(templateModel, writer);
         log.info("Generated index.html for path: {}", path);
     }
 }

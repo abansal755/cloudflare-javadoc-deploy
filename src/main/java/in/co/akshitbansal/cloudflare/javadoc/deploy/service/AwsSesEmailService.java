@@ -8,6 +8,9 @@ import freemarker.template.TemplateException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.VersionComparator;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.freemarker.DeploymentStatusEmailTemplateModel;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.freemarker.FailureTraceSectionTemplateModel;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.freemarker.ResolvedPackageArtifactsTemplateModel;
 import jakarta.inject.Named;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -17,10 +20,13 @@ import software.amazon.awssdk.services.ses.model.*;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Singleton
 @Slf4j
 public class AwsSesEmailService {
+
+    private static final String CODEBASE_PACKAGE_PREFIX = "in.co.akshitbansal.cloudflare.javadoc.deploy.";
 
     private final SesClient sesClient;
     private final Template freemarkerTemplate;
@@ -44,7 +50,7 @@ public class AwsSesEmailService {
 
     public void sendDeploymentStatusEmail(
             boolean success,
-            String errorMessage,
+            Throwable failure,
             @NonNull List<MavenPackage> packages,
             @NonNull List<MavenArtifact> artifacts,
             @NonNull String requestId,
@@ -61,7 +67,7 @@ public class AwsSesEmailService {
                     .build();
 
             // Body
-            String emailContent = generateEmailContent(success, errorMessage, packages, artifacts, requestId, correlationId);
+            String emailContent = generateEmailContent(success, failure, packages, artifacts, requestId, correlationId);
             Content content = Content.builder()
                     .data(emailContent)
                     .build();
@@ -91,26 +97,28 @@ public class AwsSesEmailService {
 
     private String generateEmailContent(
             boolean success,
-            String errorMessage,
+            Throwable failure,
             @NonNull List<MavenPackage> packages,
             @NonNull List<MavenArtifact> artifacts,
             String requestId,
             UUID correlationId
     ) throws TemplateException, IOException {
         StringWriter writer = new StringWriter();
-        Map<String, Object> dataModel = new HashMap<>();
-        dataModel.put("success", success);
-        dataModel.put("errorMessage", errorMessage);
-        dataModel.put("packages", packages);
-        dataModel.put("artifactsByPackage", getArtifactsByPackage(packages, artifacts));
-        dataModel.put("siteUrl", SITE_URL);
-        dataModel.put("requestId", requestId);
-        dataModel.put("correlationId", correlationId.toString());
-        freemarkerTemplate.process(dataModel, writer);
+        DeploymentStatusEmailTemplateModel templateModel = DeploymentStatusEmailTemplateModel
+                .builder()
+                .success(success)
+                .failureTraceSections(buildFailureTraceSections(failure))
+                .packages(packages)
+                .resolvedPackageArtifacts(getResolvedPackageArtifacts(artifacts))
+                .siteUrl(SITE_URL)
+                .requestId(requestId)
+                .correlationId(correlationId.toString())
+                .build();
+        freemarkerTemplate.process(templateModel, writer);
         return writer.toString();
     }
 
-    private Map<String, List<String>> getArtifactsByPackage(@NonNull List<MavenPackage> packages, @NonNull List<MavenArtifact> artifacts) {
+    private List<ResolvedPackageArtifactsTemplateModel> getResolvedPackageArtifacts(@NonNull List<MavenArtifact> artifacts) {
         Map<String , List<String>> artifactsByPackage = new HashMap<>();
         for(MavenArtifact artifact: artifacts) {
             String packageCoordinate = toPackageCoordinate(new MavenPackage(artifact.getGroupId(), artifact.getArtifactId()));
@@ -123,10 +131,53 @@ public class AwsSesEmailService {
         }
         for(List<String> versions: artifactsByPackage.values())
             versions.sort(new VersionComparator());
-        return artifactsByPackage;
+        return artifactsByPackage
+                .entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> ResolvedPackageArtifactsTemplateModel
+                        .builder()
+                        .packageCoordinate(entry.getKey())
+                        .versions(entry.getValue())
+                        .build())
+                .toList();
     }
 
     private String toPackageCoordinate(@NonNull MavenPackage mavenPackage) {
         return mavenPackage.getGroupId() + ":" + mavenPackage.getArtifactId();
+    }
+
+    private List<FailureTraceSectionTemplateModel> buildFailureTraceSections(Throwable failure) {
+        if(failure == null) return Collections.emptyList();
+
+        List<FailureTraceSectionTemplateModel> sections = new ArrayList<>();
+        appendThrowableSection(sections, failure, false);
+        return sections;
+    }
+
+    private void appendThrowableSection(List<FailureTraceSectionTemplateModel> sections, Throwable throwable, boolean causedBy) {
+        List<String> codebaseFrames = Arrays
+                .stream(throwable.getStackTrace())
+                .filter(this::isCodebaseFrame)
+                .map(frame -> frame.getClassName() + "." + frame.getMethodName()
+                        + "(" + frame.getFileName() + ":" + frame.getLineNumber() + ")")
+                .collect(Collectors.toList());
+
+        sections.add(FailureTraceSectionTemplateModel
+                .builder()
+                .isCausedBy(causedBy)
+                .exceptionClassName(throwable.getClass().getName())
+                .message(throwable.getMessage())
+                .codebaseFrames(codebaseFrames)
+                .build());
+
+        Throwable cause = throwable.getCause();
+        if(cause != null) {
+            appendThrowableSection(sections, cause, true);
+        }
+    }
+
+    private boolean isCodebaseFrame(StackTraceElement frame) {
+        return frame.getClassName().startsWith(CODEBASE_PACKAGE_PREFIX);
     }
 }

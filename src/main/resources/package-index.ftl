@@ -62,8 +62,8 @@
             </div>
         </#if>
         <ul>
-            <#if parentPath?? && parentPath?has_content>
-                <li><a href="${parentPath}/index.html">../</a></li>
+            <#if showParentLink?? && showParentLink>
+                <li><a href="../index.html">../</a></li>
             </#if>
 
             <#list directories as dir>

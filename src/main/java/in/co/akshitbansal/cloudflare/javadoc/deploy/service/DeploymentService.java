@@ -57,7 +57,7 @@ public class DeploymentService {
 
     public void deploy(@NonNull String awsRequestId, @NonNull UUID correlationId) {
         boolean deploymentSuccess = true;
-        String errorMessage = null;
+        Throwable failure = null;
         List<MavenArtifact> artifacts = new ArrayList<>();
 
         try {
@@ -86,13 +86,13 @@ public class DeploymentService {
         }
         catch (Exception ex) {
             deploymentSuccess = false;
-            errorMessage = ex.getMessage();
+            failure = ex;
             throw new RuntimeException("Failed to deploy javadoc site to Cloudflare Pages", ex);
         }
         finally {
             // Send deployment status email
             if(DISABLE_STATUS_EMAIL) log.warn("Status email sending is disabled. Skipping sending deployment status email.");
-            else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, errorMessage, packages, artifacts, awsRequestId, correlationId);
+            else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, failure, packages, artifacts, awsRequestId, correlationId);
         }
     }
 
