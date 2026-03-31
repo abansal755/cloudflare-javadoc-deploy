@@ -73,7 +73,6 @@ public class CloudflareService {
     @Retry
     public String triggerDeployment(Map<String, String> manifest) {
         log.info("Triggering deployment with Cloudflare");
-        validateAndRefreshUploadToken();
         String deploymentId = cloudflareClient.triggerDeployment(manifest);
         log.info("Triggered deployment with Cloudflare. Deployment ID: {}", deploymentId);
         return deploymentId;
@@ -82,7 +81,6 @@ public class CloudflareService {
     @Retry
     public DeploymentStage getLatestDeploymentStage(String deploymentId) {
         log.info("Fetching latest deployment stage from Cloudflare for deployment ID: {}", deploymentId);
-        validateAndRefreshUploadToken();
         DeploymentStage stage = cloudflareClient.getLatestDeploymentStage(deploymentId);
         log.info("Fetched latest deployment stage from Cloudflare for deployment ID: {}. Stage: {}", deploymentId, stage);
         return stage;
