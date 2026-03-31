@@ -98,6 +98,7 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
                             HashMap::new
                     ));
             String deploymentId = cloudflareService.triggerDeployment(manifest);
+            log.info("Triggered deployment with Cloudflare. Deployment ID: {}", deploymentId);
             waitForDeploymentCompletion(deploymentId);
         }
         catch (Exception ex) {
