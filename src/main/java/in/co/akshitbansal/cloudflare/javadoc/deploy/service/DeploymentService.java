@@ -5,14 +5,15 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.cloudflare.CloudflareDeploymentService;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.UUID;
 
 @Singleton
@@ -21,7 +22,7 @@ public class DeploymentService {
 
     private final MavenCentralService mavenCentralService;
     private final IndexHtmlGeneratingService indexHtmlGeneratingService;
-    private final CloudflareService cloudflareService;
+    private final CloudflareDeploymentService cloudflareDeploymentService;
     private final FilesystemService filesystemService;
     private final AwsSesEmailService awsSesEmailService;
 
@@ -35,14 +36,14 @@ public class DeploymentService {
     public DeploymentService(
             MavenCentralService mavenCentralService,
             IndexHtmlGeneratingService indexHtmlGeneratingService,
-            CloudflareService cloudflareService,
+            CloudflareDeploymentService cloudflareDeploymentService,
             FilesystemService filesystemService,
             AwsSesEmailService awsSesEmailService,
             Config config
     ) {
         this.mavenCentralService = mavenCentralService;
         this.indexHtmlGeneratingService = indexHtmlGeneratingService;
-        this.cloudflareService = cloudflareService;
+        this.cloudflareDeploymentService = cloudflareDeploymentService;
         this.filesystemService = filesystemService;
         this.awsSesEmailService = awsSesEmailService;
         this.DISABLE_CLOUDFLARE_DEPLOYMENT = config.getBoolean("stage.cloudflare-deployment.disabled");
@@ -78,7 +79,7 @@ public class DeploymentService {
 
             // Deploy the generated javadoc site to Cloudflare Pages
             if(DISABLE_CLOUDFLARE_DEPLOYMENT) log.warn("Cloudflare deployment is disabled. Skipping deployment step.");
-            else cloudflareService.deploy(siteDir, tempDir.toString());
+            else cloudflareDeploymentService.deploy(Path.of(siteDir));
 
             // Clean up the temporary directory
             if(DISABLE_TEMP_FILE_DELETION) log.warn("Temporary file deletion is disabled. Skipping deletion of temporary directory: {}", tempDir);

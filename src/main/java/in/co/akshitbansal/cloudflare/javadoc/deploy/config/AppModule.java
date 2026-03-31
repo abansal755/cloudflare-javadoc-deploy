@@ -9,15 +9,22 @@ import com.typesafe.config.ConfigParseOptions;
 import com.typesafe.config.ConfigSyntax;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastExecChainHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastHttpClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.MDCExecutorService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.CloudflareService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.FilesystemService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.ResourcesLifecycleManager;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.SchedulingService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.cloudflare.CloudflareDeploymentService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.service.cloudflare.CloudflareDeploymentServiceRestImpl;
 import jakarta.inject.Named;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.regions.Region;
@@ -46,6 +53,21 @@ public class AppModule extends AbstractModule {
         bind(ResourcesLifecycleManager.class).asEagerSingleton();
     }
 
+    // For CloudflareDeploymentService, we can switch between the Wrangler CLI implementation and the REST API implementation by changing the binding here.
+    // The Wrangler CLI implementation is faster and more efficient, but it may not work in all environments
+    // (e.g. if Wrangler CLI is not available).
+    // The REST API implementation should work in all environments
+    @Provides
+    @Singleton
+    CloudflareDeploymentService provideCloudflareDeploymentService(
+            CloudflareService cloudflareService,
+            FilesystemService filesystemService,
+            ExecutorService executor,
+            Config config
+    ) {
+        return new CloudflareDeploymentServiceRestImpl(cloudflareService, filesystemService, executor, config);
+    }
+
     @Provides
     @Singleton
     FailFastHttpClient provideHttpClient() {
@@ -53,6 +75,15 @@ public class AppModule extends AbstractModule {
                 .newInstance(builder -> builder
                         .followRedirects(HttpClient.Redirect.NORMAL) // Always follow redirects, except from HTTPS URLs to HTTP URLs
                 );
+    }
+
+    @Provides
+    @Singleton
+    CloseableHttpClient provideApacheHttpClient() {
+        return HttpClients
+                .custom()
+                .addExecInterceptorLast("fail-fast", new FailFastExecChainHandler())
+                .build();
     }
 
     @Provides

@@ -95,11 +95,9 @@ public class MavenCentralClient {
     public InputStream getJavadocJarInputStream(@NonNull MavenArtifact mavenArtifact) {
         try {
             for(MavenRepository repository: repositories) {
-                URI uri = getJavadocArtifactURI(repository, mavenArtifact);
-                log.info("GET {}", uri);
                 HttpRequest request = HttpRequest
                         .newBuilder()
-                        .uri(uri)
+                        .uri(getJavadocArtifactURI(repository, mavenArtifact))
                         .build();
                 try {
                     HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());

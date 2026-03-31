@@ -17,6 +17,9 @@ help:
 compile:
 	mvn clean compile
 
+copy-dependencies:
+	mvn dependency:copy-dependencies
+
 docker-build:
 	docker buildx build --provenance=false -t $(IMAGE_NAME) ./
 
@@ -26,4 +29,4 @@ docker-run-local:
 		-v $(LOCAL_TMP_DIR):/tmp \
 		$(IMAGE_NAME)
 
-local-test: compile docker-build docker-run-local
+local-test: compile copy-dependencies docker-build docker-run-local

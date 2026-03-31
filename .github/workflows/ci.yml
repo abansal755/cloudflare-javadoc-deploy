@@ -28,7 +28,7 @@ jobs:
                 cache: maven
 
             - name: Build project
-              run: mvn -B -ntp clean compile
+              run: mvn -B -ntp package
 
             - name: Setup AWS Credentials
               run: |
@@ -36,23 +36,9 @@ jobs:
                   aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
                   aws configure set region $AWS_REGION
 
-            - name: Login to Amazon ECR
-              run: |
-                  aws ecr get-login-password --region $AWS_REGION \
-                  | docker login --username AWS \
-                  --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-
-            - name: Build and Push Docker Image
-              run: |
-                  docker buildx build --platform linux/amd64 --provenance=false -t $IMAGE_NAME ./
-                  docker tag $IMAGE_NAME $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME:latest
-                  docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME:latest
-
             - name: Update AWS Lambda Function
               run: | 
                   aws lambda update-function-code \
-                  --function-name cloudflare_javadoc_deploy \
-                  --image-uri $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME:latest \
-                  --publish \
-                  --query 'FunctionArn' \
-                  --output text
+                  --function-name cloudflare_javadoc_deploy_zip \
+                  --zip-file fileb://target/cloudflare-javadoc-deploy-0.0.1-SNAPSHOT.jar \
+                  --publish

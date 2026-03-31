@@ -2,80 +2,94 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.typesafe.config.Config;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
-import lombok.Cleanup;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.client.CloudflareClient;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.Asset;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.BundleFile;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.DeploymentStage;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.UploadTokenJwtPayload;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.ObjectMapper;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.text.MessageFormat;
+import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 @Singleton
 @Slf4j
 public class CloudflareService {
 
-    private final String CLOUDFLARE_API_TOKEN;
-    private final String CLOUDFLARE_PROJECT_NAME;
+    private final CloudflareClient cloudflareClient;
+    private final ObjectMapper objectMapper;
+
+    private final Base64.Decoder base64Decoder;
+
+    private volatile String uploadToken;
+    private volatile long uploadTokenExpireAt;
 
     @Inject
-    public CloudflareService(Config config) {
-        this.CLOUDFLARE_API_TOKEN = config.getString("stage.cloudflare-deployment.api-token");
-        this.CLOUDFLARE_PROJECT_NAME = config.getString("stage.cloudflare-deployment.project-name");
+    public CloudflareService(CloudflareClient cloudflareClient, ObjectMapper objectMapper) {
+        this.cloudflareClient = cloudflareClient;
+        this.objectMapper = objectMapper;
+
+        this.base64Decoder = Base64.getUrlDecoder();
+
+        this.uploadToken = null;
     }
 
-    @Retry
-    public void deploy(String sitePath, String workingDirectory) {
-        try {
-            log.info("Started deploying {} to Cloudflare Pages project {}", sitePath, CLOUDFLARE_PROJECT_NAME);
+    public List<String> checkMissingHashes(List<String> hashes) {
+        validateAndRefreshUploadToken();
+        return cloudflareClient.checkMissingHashes(hashes, uploadToken);
+    }
 
-            // Build the command to deploy using Wrangler CLI
-            ProcessBuilder builder = new ProcessBuilder(
-                    "wrangler",
-                    "pages",
-                    "deploy",
-                    sitePath,
-                    "--project-name=" + CLOUDFLARE_PROJECT_NAME
-            );
-            // Set the working directory to /tmp which is the only writable directory in the Lambda execution environment. This is required for Wrangler CLI to create its configuration file and cache.
-            builder.directory(new File(workingDirectory));
+    public void uploadAssetsBucket(List<BundleFile> bucket) {
+        List<Asset> assets = bucket
+                .stream()
+                .map(file -> new Asset(file.getHash(), file.getBase64Content(), file.getContentType()))
+                .toList();
+        validateAndRefreshUploadToken();
+        cloudflareClient.uploadAssets(assets, uploadToken);
 
-            // Set the environment variable for the API token
-            Map<String,String> env = builder.environment();
-            env.put("CLOUDFLARE_API_TOKEN", CLOUDFLARE_API_TOKEN);
+        long bucketSizeInBytes = bucket
+                .stream()
+                .mapToLong(BundleFile::getSizeInBytes)
+                .sum();
+        log.info("Uploaded a bucket of files to Cloudflare. Bucket size in bytes: {}, File count: {}", bucketSizeInBytes, bucket.size());
+    }
 
-            Process process = builder.start();
-            int exitCode = process.waitFor();
-            if(exitCode != 0) {
-                @Cleanup InputStream errorStream = process.getErrorStream();
-                String errorOutput = new String(errorStream.readAllBytes());
-                throw new RetryableException(MessageFormat.format(
-                        "Wrangler CLI failed exited with code {0}. Error output: {1}",
-                        exitCode, errorOutput
-                ));
-            }
+    public void upsertHashes(List<String> hashes) {
+        validateAndRefreshUploadToken();
+        cloudflareClient.upsertHashes(hashes, uploadToken);
+    }
 
-            @Cleanup InputStream inputStream = process.getInputStream();
-            String output = new String(inputStream.readAllBytes());
-            log.info("Wrangler CLI output: {}", output);
+    public String triggerDeployment(Map<String, String> manifest) {
+        validateAndRefreshUploadToken();
+        return cloudflareClient.triggerDeployment(manifest);
+    }
 
-            log.info("Completed deploying {} to Cloudflare Pages project {}", sitePath, CLOUDFLARE_PROJECT_NAME);
+    public DeploymentStage getLatestDeploymentStage(String deploymentId) {
+        validateAndRefreshUploadToken();
+        return cloudflareClient.getLatestDeploymentStage(deploymentId);
+    }
+
+    private void validateAndRefreshUploadToken() {
+        // If the token is valid, no need to refresh
+        if(isUploadTokenValid()) return;
+        synchronized (this) {
+            // Double-check if the token is still invalid after acquiring the lock to avoid unnecessary refreshes
+            if(isUploadTokenValid()) return;
+
+            // Fetch a new upload token from Cloudflare
+            this.uploadToken = cloudflareClient.getUploadToken();
+            String[] parts = uploadToken.split("\\.");
+            String b64Payload = parts[1];
+            String payload = new String(base64Decoder.decode(b64Payload));
+            UploadTokenJwtPayload parsed = objectMapper.readValue(payload, UploadTokenJwtPayload.class);
+            this.uploadTokenExpireAt = parsed.getExpireAt() * 1000;
         }
-        catch (RetryableException ex) {
-            throw ex; // Rethrow retryable exceptions as is
-        }
-        catch (IOException | SecurityException ex) {
-            throw new RetryableException("Retryable exception occurred while deploying site to Cloudflare Pages project: " + CLOUDFLARE_PROJECT_NAME, ex);
-        }
-        catch (InterruptedException ex) {
-            Thread.currentThread().interrupt(); // Restore interrupted status
-            throw new RuntimeException("Thread was interrupted while deploying site to Cloudflare Pages project: " + CLOUDFLARE_PROJECT_NAME, ex);
-        }
-        catch (Exception ex) {
-            throw new RuntimeException("Failed to deploy site to Cloudflare Pages project: " + CLOUDFLARE_PROJECT_NAME, ex);
-        }
+    }
+
+    private boolean isUploadTokenValid() {
+        // if token is valid for at least the next 10 seconds, consider it valid to avoid edge cases during upload
+        return uploadToken != null && System.currentTimeMillis() <= uploadTokenExpireAt - 10_000;
     }
 }
