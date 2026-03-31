@@ -10,7 +10,6 @@ import com.typesafe.config.ConfigSyntax;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastExecChainHandler;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastHttpClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.MDCExecutorService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.email.AwsSesEmailClient;
@@ -37,7 +36,6 @@ import software.amazon.awssdk.services.scheduler.SchedulerClient;
 import software.amazon.awssdk.services.ses.SesClient;
 import tools.jackson.databind.ObjectMapper;
 
-import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -72,15 +70,6 @@ public class AppModule extends AbstractModule {
             Config config
     ) {
         return new CloudflareDeploymentServiceRestImpl(cloudflareService, filesystemService, executor, config);
-    }
-
-    @Provides
-    @Singleton
-    FailFastHttpClient provideHttpClient() {
-        return FailFastHttpClient
-                .newInstance(builder -> builder
-                        .followRedirects(HttpClient.Redirect.NORMAL) // Always follow redirects, except from HTTPS URLs to HTTP URLs
-                );
     }
 
     @Provides

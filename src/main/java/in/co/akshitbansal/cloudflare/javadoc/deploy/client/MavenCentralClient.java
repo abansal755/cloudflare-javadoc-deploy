@@ -3,7 +3,6 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.client;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastHttpClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.enums.DeploymentStatus;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.HttpStatusException;
@@ -15,6 +14,11 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.fluent.Request;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.core5.http.ClassicHttpResponse;
+import org.apache.hc.core5.http.HttpHeaders;
+import org.apache.hc.core5.net.URIBuilder;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
 import tools.jackson.databind.ObjectMapper;
@@ -25,8 +29,6 @@ import javax.xml.xpath.XPathFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -36,7 +38,7 @@ import java.util.List;
 @Slf4j
 public class MavenCentralClient {
 
-    private final FailFastHttpClient httpClient;
+    private final CloseableHttpClient apacheHttpClient;
     private final ObjectMapper objectMapper;
     private final List<MavenRepository> repositories;
 
@@ -47,12 +49,12 @@ public class MavenCentralClient {
 
     @Inject
     public MavenCentralClient(
-            FailFastHttpClient httpClient,
+            CloseableHttpClient apacheHttpClient,
             ObjectMapper objectMapper,
             List<MavenRepository> repositories,
             Config config
     ) {
-        this.httpClient = httpClient;
+        this.apacheHttpClient = apacheHttpClient;
         this.objectMapper = objectMapper;
         this.repositories = repositories;
         this.BASE_URL = config.getString("maven-central.base-url");
@@ -95,21 +97,24 @@ public class MavenCentralClient {
     public InputStream getJavadocJarInputStream(@NonNull MavenArtifact mavenArtifact) {
         try {
             for(MavenRepository repository: repositories) {
-                HttpRequest request = HttpRequest
-                        .newBuilder()
-                        .uri(getJavadocArtifactURI(repository, mavenArtifact))
-                        .build();
                 try {
-                    HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                    InputStream response = Request
+                            .get(getJavadocArtifactURI(repository, mavenArtifact))
+                            .execute(apacheHttpClient)
+                            .returnContent()
+                            .asStream();
                     log.info("Found javadoc jar for artifact {} in repository {}", mavenArtifact, repository);
-                    return response.body(); // caller is responsible for closing the stream after consuming it
+                    return response; // caller is responsible for closing the stream after consuming it
+                }
+                catch (IOException ex) {
+                    throw new RetryableException(MessageFormat.format(
+                            "Retryable IOException occurred while trying to fetch javadoc jar for artifact {0} from repository {1}",
+                            mavenArtifact, repository
+                    ), ex);
                 }
                 catch (HttpStatusException ex) {
-                    // Close the response body stream to prevent resource leak
-                    HttpResponse<?> response = ex.getResponse();
-                    InputStream bodyStream = (InputStream) response.body();
-                    bodyStream.close();
-                    int statusCode = response.statusCode();
+                    ClassicHttpResponse response = ex.getResponse();
+                    int statusCode = response.getCode();
                     if(statusCode == 404) {
                         // Not throwing exception here because not all repositories may have the javadoc jar for the artifact, we want to try all repositories before giving up
                         log.warn("Javadoc jar for artifact {} not found in repository {}", mavenArtifact, repository);
@@ -133,18 +138,31 @@ public class MavenCentralClient {
 
     @Retry
     public DeploymentStatus getDeploymentStatus(@NonNull String deploymentId) {
-        HttpRequest request = HttpRequest
-                .newBuilder()
-                .uri(URI.create(BASE_URL + GET_DEPLOYMENT_STATUS_ENDPOINT + "?id=" + deploymentId))
-                .header("Authorization", "Bearer " + getBearerToken(USERNAME, PASSWORD))
-                .POST(HttpRequest.BodyPublishers.noBody())
-                .build();
+        try {
+            URI uri = new URIBuilder(BASE_URL + GET_DEPLOYMENT_STATUS_ENDPOINT)
+                    .addParameter("id", deploymentId)
+                    .build();
+            String response = Request
+                    .post(uri)
+                    .addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + getBearerToken(USERNAME, PASSWORD))
+                    .execute(apacheHttpClient)
+                    .returnContent()
+                    .asString();
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        DeploymentStatusRes deploymentStatusRes = objectMapper.readValue(response.body(), DeploymentStatusRes.class);
-        DeploymentStatus status = deploymentStatusRes.getDeploymentState();
-        log.info("Fetched deployment status for deployment ID {}: {}", deploymentId, status);
-        return status;
+            DeploymentStatusRes deploymentStatusRes = objectMapper.readValue(response, DeploymentStatusRes.class);
+            DeploymentStatus status = deploymentStatusRes.getDeploymentState();
+            log.info("Fetched deployment status for deployment ID {}: {}", deploymentId, status);
+            return status;
+        }
+        catch (IOException ex) {
+            throw new RetryableException("Retryable IOException occurred while fetching deployment status for deployment ID: " + deploymentId, ex);
+        }
+        catch (RetryableException | RetryableHttpStatusException ex) {
+            throw ex;
+        }
+        catch (Exception ex) {
+            throw new RuntimeException("Failed to fetch deployment status for deployment ID: " + deploymentId, ex);
+        }
     }
 
     private String getMetadataPath(MavenPackage mavenPackage) {
