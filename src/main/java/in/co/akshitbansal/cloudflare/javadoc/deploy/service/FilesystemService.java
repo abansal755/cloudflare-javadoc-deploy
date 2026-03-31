@@ -90,7 +90,7 @@ public class FilesystemService {
             String hash = Hex
                     .encodeHexString(output)
                     .substring(0, 32); // Truncate to 32 characters
-            log.info("Computed hash for file at path: {}. Hash: {}", path, hash);
+            // log.info("Computed hash for file at path: {}. Hash: {}", path, hash);
             bundleFile.setHash(hash);
 
             // Set the content type of the file
