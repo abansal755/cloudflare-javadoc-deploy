@@ -2,6 +2,7 @@ package in.co.akshitbansal.cloudflare.javadoc.deploy.service;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.CloudflareClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.Asset;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.BundleFile;
@@ -36,11 +37,13 @@ public class CloudflareService {
         this.uploadToken = null;
     }
 
+    @Retry
     public List<String> checkMissingHashes(List<String> hashes) {
         validateAndRefreshUploadToken();
         return cloudflareClient.checkMissingHashes(hashes, uploadToken);
     }
 
+    @Retry
     public void uploadAssetsBucket(List<BundleFile> bucket) {
         List<Asset> assets = bucket
                 .stream()
@@ -56,16 +59,19 @@ public class CloudflareService {
         log.info("Uploaded a bucket of files to Cloudflare. Bucket size in bytes: {}, File count: {}", bucketSizeInBytes, bucket.size());
     }
 
+    @Retry
     public void upsertHashes(List<String> hashes) {
         validateAndRefreshUploadToken();
         cloudflareClient.upsertHashes(hashes, uploadToken);
     }
 
+    @Retry
     public String triggerDeployment(Map<String, String> manifest) {
         validateAndRefreshUploadToken();
         return cloudflareClient.triggerDeployment(manifest);
     }
 
+    @Retry
     public DeploymentStage getLatestDeploymentStage(String deploymentId) {
         validateAndRefreshUploadToken();
         return cloudflareClient.getLatestDeploymentStage(deploymentId);
