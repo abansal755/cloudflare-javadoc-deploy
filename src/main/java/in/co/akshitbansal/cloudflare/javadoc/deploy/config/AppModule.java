@@ -13,6 +13,8 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastExecChainHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.FailFastHttpClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.LambdaHandler;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.MDCExecutorService;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.client.email.AwsSesEmailClient;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.client.email.EmailClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenRepository;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.CloudflareService;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.FilesystemService;
@@ -51,6 +53,10 @@ public class AppModule extends AbstractModule {
         bind(SchedulingService.class).asEagerSingleton();
         // ResourcesLifecycleManager is responsible for closing resources like ExecutorService and AWS clients, so it should also be an eager singleton
         bind(ResourcesLifecycleManager.class).asEagerSingleton();
+
+        // Bind EmailClient to AwsSesEmailClient. This allows us to easily switch to a different email client implementation in the future if needed
+        // by changing the binding here without affecting other parts of the code that depend on EmailClient.
+        bind(EmailClient.class).to(AwsSesEmailClient.class);
     }
 
     // For CloudflareDeploymentService, we can switch between the Wrangler CLI implementation and the REST API implementation by changing the binding here.

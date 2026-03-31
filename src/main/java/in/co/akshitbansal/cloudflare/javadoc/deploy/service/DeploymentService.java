@@ -24,7 +24,7 @@ public class DeploymentService {
     private final IndexHtmlGeneratingService indexHtmlGeneratingService;
     private final CloudflareDeploymentService cloudflareDeploymentService;
     private final FilesystemService filesystemService;
-    private final AwsSesEmailService awsSesEmailService;
+    private final EmailService emailService;
 
     private final boolean DISABLE_CLOUDFLARE_DEPLOYMENT;
     private final boolean DISABLE_TEMP_FILE_DELETION;
@@ -38,14 +38,14 @@ public class DeploymentService {
             IndexHtmlGeneratingService indexHtmlGeneratingService,
             CloudflareDeploymentService cloudflareDeploymentService,
             FilesystemService filesystemService,
-            AwsSesEmailService awsSesEmailService,
+            EmailService emailService,
             Config config
     ) {
         this.mavenCentralService = mavenCentralService;
         this.indexHtmlGeneratingService = indexHtmlGeneratingService;
         this.cloudflareDeploymentService = cloudflareDeploymentService;
         this.filesystemService = filesystemService;
-        this.awsSesEmailService = awsSesEmailService;
+        this.emailService = emailService;
         this.DISABLE_CLOUDFLARE_DEPLOYMENT = config.getBoolean("stage.cloudflare-deployment.disabled");
         this.DISABLE_TEMP_FILE_DELETION = config.getBoolean("stage.temp-file-deletion.disabled");
         this.DISABLE_STATUS_EMAIL = config.getBoolean("stage.status-email.disabled");
@@ -93,7 +93,7 @@ public class DeploymentService {
         finally {
             // Send deployment status email
             if(DISABLE_STATUS_EMAIL) log.warn("Status email sending is disabled. Skipping sending deployment status email.");
-            else awsSesEmailService.sendDeploymentStatusEmail(deploymentSuccess, failure, packages, artifacts, awsRequestId, correlationId);
+            else emailService.sendDeploymentStatusEmail(deploymentSuccess, failure, packages, artifacts, awsRequestId, correlationId);
         }
     }
 

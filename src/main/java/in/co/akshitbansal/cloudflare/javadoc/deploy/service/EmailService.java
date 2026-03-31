@@ -6,6 +6,7 @@ import com.typesafe.config.Config;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.VersionComparator;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.client.email.EmailClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenArtifact;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.MavenPackage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.freemarker.DeploymentStatusEmailTemplateModel;
@@ -14,8 +15,6 @@ import in.co.akshitbansal.cloudflare.javadoc.deploy.model.freemarker.ResolvedPac
 import jakarta.inject.Named;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import software.amazon.awssdk.services.ses.SesClient;
-import software.amazon.awssdk.services.ses.model.*;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -24,27 +23,25 @@ import java.util.stream.Collectors;
 
 @Singleton
 @Slf4j
-public class AwsSesEmailService {
+public class EmailService {
 
     private static final String CODEBASE_PACKAGE_PREFIX = "in.co.akshitbansal.cloudflare.javadoc.deploy.";
 
-    private final SesClient sesClient;
+    private final EmailClient emailClient;
     private final Template freemarkerTemplate;
 
     private final String STATUS_EMAIL_RECIPIENT;
-    private final String STATUS_EMAIL_SENDER;
     private final String SITE_URL;
 
     @Inject
-    public AwsSesEmailService(
-            SesClient sesClient,
+    public EmailService(
+            EmailClient emailClient,
             @Named("statusEmailTemplate") Template freemarkerTemplate,
             Config config
     ) {
-        this.sesClient = sesClient;
+        this.emailClient = emailClient;
         this.freemarkerTemplate = freemarkerTemplate;
         this.STATUS_EMAIL_RECIPIENT = config.getString("stage.status-email.recipient");
-        this.STATUS_EMAIL_SENDER = config.getString("stage.status-email.sender");
         this.SITE_URL = config.getString("stage.status-email.site-url");
     }
 
@@ -57,37 +54,11 @@ public class AwsSesEmailService {
             @NonNull UUID correlationId
     ) {
         try {
-            // Recipient
-            Destination destination = Destination.builder()
-                    .toAddresses(STATUS_EMAIL_RECIPIENT)
-                    .build();
-            // Subject
-            Content subject = Content.builder()
-                    .data("Cloudflare Javadoc Deployment " + (success ? "Succeeded" : "Failed"))
-                    .build();
-
-            // Body
+            String subject = "Cloudflare Javadoc Deployment " + (success ? "Succeeded" : "Failed");
             String emailContent = generateEmailContent(success, failure, packages, artifacts, requestId, correlationId);
-            Content content = Content.builder()
-                    .data(emailContent)
-                    .build();
-            Body body = Body.builder()
-                    .html(content)
-                    .build();
-            Message message = Message.builder()
-                    .subject(subject)
-                    .body(body)
-                    .build();
-
-            SendEmailRequest emailRequest = SendEmailRequest
-                    .builder()
-                    .message(message)
-                    .destination(destination)
-                    .source(STATUS_EMAIL_SENDER)
-                    .build();
+            emailClient.sendEmail(STATUS_EMAIL_RECIPIENT, subject, emailContent);
 
             log.info("Sending deployment status email to {}", STATUS_EMAIL_RECIPIENT);
-            sesClient.sendEmail(emailRequest);
         }
         catch (Exception ex) {
             // Silently catch any exceptions to avoid affecting the main deployment flow, but log the error for debugging purposes
