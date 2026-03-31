@@ -39,8 +39,11 @@ public class CloudflareService {
 
     @Retry
     public List<String> checkMissingHashes(List<String> hashes) {
+        log.info("Checking missing hashes with Cloudflare for {} files", hashes.size());
         validateAndRefreshUploadToken();
-        return cloudflareClient.checkMissingHashes(hashes, uploadToken);
+        List<String> missingHashes = cloudflareClient.checkMissingHashes(hashes, uploadToken);
+        log.info("Checked missing hashes with Cloudflare. Missing files count: {}", missingHashes.size());
+        return missingHashes;
     }
 
     @Retry
@@ -61,20 +64,28 @@ public class CloudflareService {
 
     @Retry
     public void upsertHashes(List<String> hashes) {
+        log.info("Upserting all hashes to Cloudflare. Total hashes to upsert: {}", hashes.size());
         validateAndRefreshUploadToken();
         cloudflareClient.upsertHashes(hashes, uploadToken);
+        log.info("Completed upserting to hashes with Cloudflare");
     }
 
     @Retry
     public String triggerDeployment(Map<String, String> manifest) {
+        log.info("Triggering deployment with Cloudflare");
         validateAndRefreshUploadToken();
-        return cloudflareClient.triggerDeployment(manifest);
+        String deploymentId = cloudflareClient.triggerDeployment(manifest);
+        log.info("Triggered deployment with Cloudflare. Deployment ID: {}", deploymentId);
+        return deploymentId;
     }
 
     @Retry
     public DeploymentStage getLatestDeploymentStage(String deploymentId) {
+        log.info("Fetching latest deployment stage from Cloudflare for deployment ID: {}", deploymentId);
         validateAndRefreshUploadToken();
-        return cloudflareClient.getLatestDeploymentStage(deploymentId);
+        DeploymentStage stage = cloudflareClient.getLatestDeploymentStage(deploymentId);
+        log.info("Fetched latest deployment stage from Cloudflare for deployment ID: {}. Stage: {}", deploymentId, stage);
+        return stage;
     }
 
     private void validateAndRefreshUploadToken() {
@@ -83,6 +94,7 @@ public class CloudflareService {
         synchronized (this) {
             // Double-check if the token is still invalid after acquiring the lock to avoid unnecessary refreshes
             if(isUploadTokenValid()) return;
+            log.info("Upload token is missing or expired. Fetching a new upload token from Cloudflare");
 
             // Fetch a new upload token from Cloudflare
             this.uploadToken = cloudflareClient.getUploadToken();

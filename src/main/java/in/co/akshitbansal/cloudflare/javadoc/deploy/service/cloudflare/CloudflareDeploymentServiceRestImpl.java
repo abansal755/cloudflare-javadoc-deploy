@@ -52,7 +52,6 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
 
             // List all files in the sitePath directory recursively and create BundleFile objects for each file
             List<BundleFile> files = filesystemService.listFilesRecursively(sitePath);
-            log.info("Listed {} files in directory: {}", files.size(), sitePath);
 
             // For each BundleFile, compute the hash and base64 content in parallel
             populateBundleFiles(files, sitePath);
@@ -73,7 +72,6 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
                     .map(BundleFile::getHash)
                     .toList();
             List<String> missingHashes = cloudflareService.checkMissingHashes(hashes);
-            log.info("Checked missing hashes with Cloudflare. Missing files count: {}", missingHashes.size());
             // Get the list of missing files using the hashToFileMap
             List<BundleFile> missingFiles = missingHashes
                     .stream()
@@ -85,7 +83,6 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
 
             // Upsert all the hashes
             cloudflareService.upsertHashes(hashes);
-            log.info("Upserted all hashes with Cloudflare. Total hashes upserted: {}", hashes.size());
 
             // Trigger deployment
             // Create a manifest of relative path to hash for all files to trigger deployment
@@ -98,8 +95,9 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
                             HashMap::new
                     ));
             String deploymentId = cloudflareService.triggerDeployment(manifest);
-            log.info("Triggered deployment with Cloudflare. Deployment ID: {}", deploymentId);
             waitForDeploymentCompletion(deploymentId);
+
+            log.info("Completed deploying {} to Cloudflare Pages project using REST API implementation", sitePath);
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to deploy site to Cloudflare Pages project using REST API implementation for site path: " + sitePath, ex);
@@ -119,6 +117,7 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
         List<List<BundleFile>> buckets = createBuckets(missingFiles);
         log.info("Created {} buckets for missing files to upload to Cloudflare", buckets.size());
 
+        log.info("Uploading missing files to Cloudflare in parallel. Total missing files: {}, Total buckets: {}", missingFiles.size(), buckets.size());
         List<CompletableFuture<Void>> uploadFutures = buckets
                 .stream()
                 .map(bucket -> CompletableFuture.runAsync(() -> cloudflareService.uploadAssetsBucket(bucket), executor))

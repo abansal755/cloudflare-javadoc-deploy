@@ -58,10 +58,12 @@ public class FilesystemService {
     public List<BundleFile> listFilesRecursively(@NonNull Path path) {
         try {
             @Cleanup Stream<Path> stream = Files.walk(path);
-            return stream
+            List<BundleFile> files = stream
                     .filter(Files::isRegularFile)
                     .map(filePath -> mapToBundleFile(filePath, path)) // Using the same path as basePath to get relative paths
                     .toList();
+            log.info("Found {} files in directory: {}", files.size(), path);
+            return files;
         }
         catch (Exception ex) {
             throw new RuntimeException("Failed to list files recursively at path: " + path, ex);
