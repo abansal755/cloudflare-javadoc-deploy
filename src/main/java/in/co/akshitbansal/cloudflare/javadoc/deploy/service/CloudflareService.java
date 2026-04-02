@@ -5,7 +5,6 @@ import com.google.inject.Singleton;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.CloudflareClient;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.Asset;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.BundleFile;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.DeploymentStage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.UploadTokenJwtPayload;
 import lombok.extern.slf4j.Slf4j;
@@ -47,19 +46,9 @@ public class CloudflareService {
     }
 
     @Retry
-    public void uploadAssetsBucket(List<BundleFile> bucket) {
-        List<Asset> assets = bucket
-                .stream()
-                .map(file -> new Asset(file.getHash(), file.getBase64Content(), file.getContentType()))
-                .toList();
+    public void uploadAssetsBucket(List<Asset> assets) {
         validateAndRefreshUploadToken();
         cloudflareClient.uploadAssets(assets, uploadToken);
-
-        long bucketSizeInBytes = bucket
-                .stream()
-                .mapToLong(BundleFile::getSizeInBytes)
-                .sum();
-        log.info("Uploaded a bucket of files to Cloudflare. Bucket size in bytes: {}, File count: {}", bucketSizeInBytes, bucket.size());
     }
 
     @Retry

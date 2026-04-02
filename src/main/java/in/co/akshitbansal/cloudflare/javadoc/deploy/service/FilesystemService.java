@@ -7,14 +7,18 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.digest.Blake3;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.text.MessageFormat;
 import java.util.Base64;
 import java.util.List;
 import java.util.stream.Stream;
@@ -70,41 +74,95 @@ public class FilesystemService {
         }
     }
 
-    public void populateBundleFile(@NonNull BundleFile bundleFile) {
-        Path path = Path.of(bundleFile.getAbsolutePath());
+    public String getBundleFileBase64Content(@NonNull BundleFile bundleFile) {
         try {
-            // Read the file content as bytes
-            byte[] bytes = Files.readAllBytes(path);
-            bundleFile.setSizeInBytes(bytes.length); // Set the size in bytes
-            // Encode the bytes to Base64 string
-            String base64Content = base64Encoder.encodeToString(bytes);
-            bundleFile.setBase64Content(base64Content);
-
-            // Extract the file extension
-            String fileName = path.getFileName().toString();
-            int dotIdx = fileName.lastIndexOf('.');
-            String extension = "";
-            if(dotIdx != -1) extension = fileName.substring(dotIdx + 1);
-
-            // Combine the Base64 content and the file extension, and compute the Blake3 hash
-            byte[] input = (base64Content + extension).getBytes(StandardCharsets.UTF_8);
-            byte[] output = Blake3.hash(input);
-            String hash = Hex
-                    .encodeHexString(output)
-                    .substring(0, 32); // Truncate to 32 characters
-            // log.info("Computed hash for file at path: {}. Hash: {}", path, hash);
-            bundleFile.setHash(hash);
-
-            // Set the content type of the file
-            bundleFile.setContentType(Files.probeContentType(path));
+            Path path = Path.of(bundleFile.getAbsolutePath());
+            return base64Encoder.encodeToString(Files.readAllBytes(path));
         }
         catch (Exception ex) {
-            throw new RuntimeException("Failed to compute hash for file at path: " + path, ex);
+            throw new RuntimeException(MessageFormat.format(
+                    "Exception occurred while reading file content for file: {0}",
+                    bundleFile.getAbsolutePath()
+            ));
         }
+    }
+
+    public void populateBundleFileMetadata(@NonNull BundleFile bundleFile) {
+        try {
+            Path path = Path.of(bundleFile.getAbsolutePath());
+            bundleFile.setSizeInBytes(Files.size(path));
+            bundleFile.setContentType(Files.probeContentType(path));
+            populateBundleFileHash(bundleFile);
+        }
+        catch (Exception ex) {
+            throw new RuntimeException(MessageFormat.format(
+                    "Exception occurred while populating metadata for file: {0}",
+                    bundleFile.getAbsolutePath()
+            ));
+        }
+    }
+
+    private void populateBundleFileHash(@NonNull BundleFile bundleFile) {
+        Path path = Path.of(bundleFile.getAbsolutePath());
+        try {
+            Blake3OutputStream blakeOut = new Blake3OutputStream();
+            try(InputStream in = Files.newInputStream(path);
+                OutputStream base64Out = base64Encoder.wrap(blakeOut)) {
+
+                byte[] buffer = new byte[8192];
+                int read;
+                while((read = in.read(buffer)) != -1) {
+                    base64Out.write(buffer, 0, read);
+                }
+            }
+            String extension = getFileExtension(path);
+            blakeOut.write(extension.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = blakeOut.getDigest();
+            String hash = Hex.encodeHexString(digest);
+            bundleFile.setHash(hash);
+        }
+        catch (Exception ex) {
+            throw new RuntimeException(MessageFormat.format(
+                    "Exception occurred while populating hash for file: {0}", path
+            ));
+        }
+    }
+
+    private String getFileExtension(@NonNull Path path) {
+        String fileName = path.getFileName().toString();
+        int dotIdx = fileName.lastIndexOf('.');
+        if(dotIdx != -1) return fileName.substring(dotIdx + 1);
+        return "";
     }
 
     private BundleFile mapToBundleFile(Path filePath, Path basePath) {
         String relativePath = "/" + basePath.relativize(filePath).toString();
         return new BundleFile(filePath.toString(), relativePath);
+    }
+
+    private static class Blake3OutputStream extends OutputStream {
+
+        private final Blake3 blake3;
+        private final byte[] singleByte;
+
+        public Blake3OutputStream() {
+            this.blake3 = Blake3.initHash();
+            singleByte = new byte[1];
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            singleByte[0] = (byte) b;
+            blake3.update(singleByte);
+        }
+
+        @Override
+        public void write(@NotNull byte[] b, int off, int len) throws IOException {
+            blake3.update(b, off, len);
+        }
+
+        public byte[] getDigest() {
+            return blake3.doFinalize(16);
+        }
     }
 }

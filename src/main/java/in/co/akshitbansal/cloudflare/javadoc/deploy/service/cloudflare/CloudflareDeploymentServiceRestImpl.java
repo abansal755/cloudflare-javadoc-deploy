@@ -1,6 +1,7 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service.cloudflare;
 
 import com.typesafe.config.Config;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.Asset;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.BundleFile;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.DeploymentStage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.CloudflareService;
@@ -53,8 +54,8 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
             // List all files in the sitePath directory recursively and create BundleFile objects for each file
             List<BundleFile> files = filesystemService.listFilesRecursively(sitePath);
 
-            // For each BundleFile, compute the hash and base64 content in parallel
-            populateBundleFiles(files, sitePath);
+            // For each BundleFile, populate metadata in parallel
+            populateBundleFilesMetadata(files, sitePath);
 
             // Create a map of hash to BundleFile for quick lookup
             Map<String, BundleFile> hashToFileMap = files
@@ -104,13 +105,13 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
         }
     }
 
-    private void populateBundleFiles(List<BundleFile> files, Path sitePath) {
+    private void populateBundleFilesMetadata(List<BundleFile> files, Path sitePath) {
         List<CompletableFuture<Void>> futures = files
                 .stream()
-                .map(file -> CompletableFuture.runAsync(() -> filesystemService.populateBundleFile(file), executor))
+                .map(file -> CompletableFuture.runAsync(() -> filesystemService.populateBundleFileMetadata(file), executor))
                 .toList();
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        log.info("Computed hash and base64 content for all files in directory: {}", sitePath);
+        log.info("Populated metadata for all files in directory: {}", sitePath);
     }
 
     private void uploadMissingFiles(List<BundleFile> missingFiles) {
@@ -120,7 +121,7 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
         log.info("Uploading missing files to Cloudflare in parallel. Total missing files: {}, Total buckets: {}", missingFiles.size(), buckets.size());
         List<CompletableFuture<Void>> uploadFutures = buckets
                 .stream()
-                .map(bucket -> CompletableFuture.runAsync(() -> cloudflareService.uploadAssetsBucket(bucket), executor))
+                .map(bucket -> CompletableFuture.runAsync(() -> uploadBucket(bucket), executor))
                 .toList();
         CompletableFuture.allOf(uploadFutures.toArray(new CompletableFuture[0])).join();
         log.info("Uploaded all missing files to Cloudflare. Missing files count: {}", missingFiles.size());
@@ -154,6 +155,36 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
         if(!currentBucket.isEmpty())
             buckets.add(currentBucket);
         return buckets;
+    }
+
+    private void uploadBucket(List<BundleFile> bucket) {
+        log.info("Uploading a bucket of files to Cloudflare. Loading content of {} files in parallel", bucket.size());
+
+        List<CompletableFuture<Asset>> futures = bucket
+                .stream()
+                .map(file -> CompletableFuture.supplyAsync(() -> mapBundleFileToAsset(file), executor))
+                .toList();
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        List<Asset> assets = futures
+                .stream()
+                .map(CompletableFuture::join)
+                .toList();
+        cloudflareService.uploadAssetsBucket(assets);
+
+        long bucketSizeInBytes = bucket
+                .stream()
+                .mapToLong(BundleFile::getSizeInBytes)
+                .sum();
+        log.info("Uploaded a bucket of files to Cloudflare. Bucket size in bytes: {}, File count: {}", bucketSizeInBytes, bucket.size());
+    }
+
+    private Asset mapBundleFileToAsset(@NonNull BundleFile bundleFile) {
+        return new Asset(
+                bundleFile.getHash(),
+                filesystemService.getBundleFileBase64Content(bundleFile),
+                bundleFile.getContentType()
+        );
     }
 
     private void waitForDeploymentCompletion(@NonNull String deploymentId) {
