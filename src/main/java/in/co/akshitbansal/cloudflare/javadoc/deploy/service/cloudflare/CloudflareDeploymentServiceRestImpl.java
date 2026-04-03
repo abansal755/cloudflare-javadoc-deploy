@@ -1,7 +1,6 @@
 package in.co.akshitbansal.cloudflare.javadoc.deploy.service.cloudflare;
 
 import com.typesafe.config.Config;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.Asset;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.BundleFile;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.DeploymentStage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.service.CloudflareService;
@@ -159,32 +158,13 @@ public class CloudflareDeploymentServiceRestImpl implements CloudflareDeployment
 
     private void uploadBucket(List<BundleFile> bucket) {
         log.info("Uploading a bucket of files to Cloudflare. Loading content of {} files in parallel", bucket.size());
-
-        List<CompletableFuture<Asset>> futures = bucket
-                .stream()
-                .map(file -> CompletableFuture.supplyAsync(() -> mapBundleFileToAsset(file), executor))
-                .toList();
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-        List<Asset> assets = futures
-                .stream()
-                .map(CompletableFuture::join)
-                .toList();
-        cloudflareService.uploadAssetsBucket(assets);
+        cloudflareService.uploadBundleFiles(bucket);
 
         long bucketSizeInBytes = bucket
                 .stream()
                 .mapToLong(BundleFile::getSizeInBytes)
                 .sum();
         log.info("Uploaded a bucket of files to Cloudflare. Bucket size in bytes: {}, File count: {}", bucketSizeInBytes, bucket.size());
-    }
-
-    private Asset mapBundleFileToAsset(@NonNull BundleFile bundleFile) {
-        return new Asset(
-                bundleFile.getHash(),
-                filesystemService.getBundleFileBase64Content(bundleFile),
-                bundleFile.getContentType()
-        );
     }
 
     private void waitForDeploymentCompletion(@NonNull String deploymentId) {

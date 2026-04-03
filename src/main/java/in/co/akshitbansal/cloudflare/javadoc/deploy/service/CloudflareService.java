@@ -4,7 +4,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.annotation.Retry;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.client.CloudflareClient;
-import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.Asset;
+import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.BundleFile;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.DeploymentStage;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.UploadTokenJwtPayload;
 import lombok.extern.slf4j.Slf4j;
@@ -46,9 +46,9 @@ public class CloudflareService {
     }
 
     @Retry
-    public void uploadAssetsBucket(List<Asset> assets) {
+    public void uploadBundleFiles(List<BundleFile> bundleFiles) {
         validateAndRefreshUploadToken();
-        cloudflareClient.uploadAssets(assets, uploadToken);
+        cloudflareClient.uploadBundleFiles(bundleFiles, uploadToken);
     }
 
     @Retry

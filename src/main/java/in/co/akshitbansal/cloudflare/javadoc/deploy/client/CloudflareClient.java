@@ -5,16 +5,24 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.exception.RetryableException;
 import in.co.akshitbansal.cloudflare.javadoc.deploy.model.cloudflare.*;
+import lombok.Cleanup;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.fluent.Request;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpHeaders;
+import org.apache.hc.core5.http.io.entity.HttpEntities;
+import tools.jackson.core.JsonEncoding;
+import tools.jackson.core.JsonGenerator;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.JsonNodeType;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.util.List;
 import java.util.Map;
@@ -94,17 +102,17 @@ public class CloudflareClient {
         }
     }
 
-    public void uploadAssets(List<Asset> assets, String uploadToken) {
+    public void uploadBundleFiles(List<BundleFile> bundleFiles, String uploadToken) {
         try {
             Request
                     .post(CLOUDFLARE_BASE_URL + CLOUDFLARE_UPLOAD_ASSETS_ENDPOINT)
                     .addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + uploadToken)
-                    .bodyString(objectMapper.writeValueAsString(assets), ContentType.APPLICATION_JSON)
+                    .body(HttpEntities.create(outputStream -> writeBundleFilesJsonToOutputStream(outputStream, bundleFiles), ContentType.APPLICATION_JSON))
                     .execute(apacheHttpClient)
                     .discardContent();
         }
         catch (IOException ex) {
-            throw new RetryableException("Retryable IOException occurred while uploading assets", ex);
+            throw new RetryableException("Retryable IOException occurred while uploading bundle files", ex);
         }
     }
 
@@ -175,5 +183,27 @@ public class CloudflareClient {
         catch (IOException ex) {
             throw new RetryableException("Retryable IOException occurred while fetching deployment status", ex);
         }
+    }
+
+    private void writeBundleFilesJsonToOutputStream(OutputStream outputStream, List<BundleFile> bundleFiles) {
+        @Cleanup JsonGenerator generator = objectMapper.createGenerator(outputStream, JsonEncoding.UTF8);
+        generator.writeStartArray();
+        bundleFiles.forEach(bundleFile -> {
+            generator.writeStartObject();
+            generator.writeStringProperty("key", bundleFile.getHash());
+            generator.writeBooleanProperty("base64", true);
+            generator.writeObjectPropertyStart("metadata");
+            generator.writeStringProperty("contentType", bundleFile.getContentType());
+            generator.writeEndObject();
+            try(InputStream in = Files.newInputStream(Path.of(bundleFile.getAbsolutePath()))) {
+                generator.writeName("value");
+                generator.writeBinary(in, -1);
+            }
+            catch (IOException ex) {
+                throw new RuntimeException("Failed to stream bundle file content", ex);
+            }
+            generator.writeEndObject();
+        });
+        generator.writeEndArray();
     }
 }
