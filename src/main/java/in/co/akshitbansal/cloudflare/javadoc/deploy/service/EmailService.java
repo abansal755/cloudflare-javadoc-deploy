@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 public class EmailService {
 
     private static final String CODEBASE_PACKAGE_PREFIX = "in.co.akshitbansal.cloudflare.javadoc.deploy.";
+    private static final int MAX_DISPLAYED_ARTIFACTS_PER_PACKAGE = 10;
 
     private final EmailClient emailClient;
     private final Template freemarkerTemplate;
@@ -109,8 +110,16 @@ public class EmailService {
                 .map(entry -> ResolvedPackageArtifactsTemplateModel
                         .builder()
                         .packageCoordinate(entry.getKey())
-                        .versions(entry.getValue())
+                        .versions(getDisplayedVersions(entry.getValue()))
+                        .hasMoreVersions(entry.getValue().size() > MAX_DISPLAYED_ARTIFACTS_PER_PACKAGE)
                         .build())
+                .toList();
+    }
+
+    private List<String> getDisplayedVersions(@NonNull List<String> versions) {
+        return versions
+                .stream()
+                .limit(MAX_DISPLAYED_ARTIFACTS_PER_PACKAGE)
                 .toList();
     }
 

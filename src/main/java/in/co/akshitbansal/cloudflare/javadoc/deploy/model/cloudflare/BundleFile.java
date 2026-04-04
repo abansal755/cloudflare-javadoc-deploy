@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Comparator;
 
 @Data
-public class BundleFile implements Comparable<BundleFile>{
+public class BundleFile implements Comparable<BundleFile> {
 
     private String absolutePath;
     private String relativePath;

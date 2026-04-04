@@ -8,6 +8,7 @@ public class VersionComparator implements Comparator<String> {
 
     @Override
     public int compare(String o1, String o2) {
-        return new ComparableVersion(o1).compareTo(new ComparableVersion(o2));
+        // Descending order
+        return new ComparableVersion(o2).compareTo(new ComparableVersion(o1));
     }
 }

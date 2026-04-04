@@ -354,6 +354,9 @@
                     <#list packageArtifacts.versions as artifact>
                       <span class="artifact-chip">${artifact}</span>
                     </#list>
+                    <#if packageArtifacts.hasMoreVersions>
+                      <span class="artifact-chip">...</span>
+                    </#if>
                   </div>
                 <#else>
                   <div class="muted">No artifacts were resolved for this package.</div>

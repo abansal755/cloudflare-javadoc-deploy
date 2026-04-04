@@ -11,4 +11,5 @@ public class ResolvedPackageArtifactsTemplateModel {
 
     private final String packageCoordinate;
     private final List<String> versions;
+    private final boolean hasMoreVersions;
 }
