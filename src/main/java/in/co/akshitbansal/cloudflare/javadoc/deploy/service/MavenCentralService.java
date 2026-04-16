@@ -89,6 +89,11 @@ public class MavenCentralService {
             ZipEntry entry;
             while((entry = zipInputStream.getNextEntry()) != null) {
                 Path entryPath = path.resolve(entry.getName()).normalize();
+                if(!entryPath.startsWith(path)) {
+                    throw new RuntimeException(MessageFormat.format(
+                            "Bad Zip entry, it is outside the artifact directory {0}. Zip entry: {1}", path, entry
+                    ));
+                }
                 if(entry.isDirectory()) Files.createDirectories(entryPath);
                 else {
                     Files.createDirectories(entryPath.getParent());
